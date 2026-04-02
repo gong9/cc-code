@@ -20,6 +20,7 @@ import type {
 import type { TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
 import type { Stream } from '@anthropic-ai/sdk/streaming.mjs'
 import { randomUUID } from 'crypto'
+import { appendFile } from 'fs/promises'
 import {
   getAPIProvider,
   isFirstPartyAnthropicBaseUrl,
@@ -101,6 +102,7 @@ import {
   extractQuotaStatusFromHeaders,
 } from '../claudeAiLimits.js'
 import { getAPIContextManagement } from '../compact/apiMicrocompact.js'
+import { stripImagesFromMessages } from '../compact/compact.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const autoModeStateModule = feature('TRANSCRIPT_CLASSIFIER')
@@ -229,6 +231,13 @@ import {
 import { getInitializationStatus } from '../lsp/manager.js'
 import { isToolFromMcpServer } from '../mcp/utils.js'
 import { withStreamingVCR, withVCR } from '../vcr.js'
+
+const MINIMAX_VISION_TRACE_FILE = '.tmp-minimax-vision-trace.log'
+
+function traceMiniMaxVision(event: string, data?: Record<string, unknown>): void {
+  const line = `[${new Date().toISOString()}] ${event}${data ? ` ${JSON.stringify(data)}` : ''}\n`
+  void appendFile(MINIMAX_VISION_TRACE_FILE, line).catch(() => {})
+}
 import { CLIENT_REQUEST_ID_HEADER, getAnthropicClient } from './client.js'
 import {
   API_ERROR_MESSAGE_PREFIX,
@@ -1031,31 +1040,37 @@ async function* queryModelWithProvider(
   providerName: string,
 ): AsyncGenerator<StreamEvent | AssistantMessage | SystemAPIErrorMessage, void> {
   const { initializeProviderFromEnv } = await import('./providers/config.js')
-  const { getActiveProvider } = await import('./providers/registry.js')
+  const { getProvider, getActiveProvider } = await import('./providers/registry.js')
   const { convertToUnifiedMessages, convertToUnifiedTools } = await import('./providers/integration.js')
   
   // Initialize provider if needed
   await initializeProviderFromEnv()
   
-  const provider = getActiveProvider()
+  // Get provider instance
+  let provider
+  if (providerName && providerName !== 'default') {
+    provider = getProvider(providerName, {
+      provider: 'minimax' as const,
+      apiKey: process.env.MINIMAX_API_KEY || process.env.ANTHROPIC_API_KEY,
+      model: options.model,
+    })
+  } else {
+    provider = getActiveProvider()
+  }
   
   // Convert messages and system prompt to unified format
   const unifiedMessages = convertToUnifiedMessages(messages)
   const unifiedTools = convertToUnifiedTools(tools)
-  
-  // Build system prompt string
   const systemPromptText = systemPrompt.join('\n\n')
   
   try {
-    // Get the model from options or use provider default
     const model = options.model || process.env.MINIMAX_MODEL || process.env.GLM_MODEL || process.env.OPENAI_MODEL || 'MiniMax-M2.7'
     
-    // Start streaming
     const chatParams = {
       messages: unifiedMessages,
       systemPrompt: systemPromptText,
       tools: unifiedTools,
-      maxTokens: options.maxTokens || 8192,
+      maxTokens: (options as { maxTokens?: number }).maxTokens || 8192,
       signal,
       model,
     }
@@ -1064,46 +1079,140 @@ async function* queryModelWithProvider(
     let fullContent = ''
     let inputTokens = 0
     let outputTokens = 0
+    let eventCount = 0
+    traceMiniMaxVision('queryModelWithProvider.start', {
+      providerName,
+      model,
+      messages: unifiedMessages.length,
+      tools: unifiedTools.length,
+    })
     
-    // Yield stream events wrapped properly
     for await (const event of provider.chat(chatParams)) {
-      // Wrap stream events in the expected format
-      yield { type: 'stream_event', event } as StreamEvent
+      eventCount++
+      if (eventCount <= 5) {
+        traceMiniMaxVision('queryModelWithProvider.event', {
+          providerName,
+          model,
+          type: event.type,
+        })
+      }
+      // ================================================================
+      // Convert provider StreamEvent (camelCase) to Anthropic SDK format
+      // (snake_case) that the UI's handleMessageFromStream expects.
+      //
+      // Provider: { contentBlock: {...} }  → UI expects: { content_block: {...} }
+      // Provider: { usage: { inputTokens } } → UI expects: { usage: { output_tokens } }
+      // ================================================================
+      const anthropicEvent: Record<string, unknown> = { type: event.type }
       
-      // Track content for final message
-      if (event.type === 'message_start') {
-        inputTokens = event.message?.usage?.inputTokens || 0
-      } else if (event.type === 'content_block_delta') {
-        if (event.delta?.type === 'text_delta') {
-          fullContent += event.delta.text || ''
-        }
-      } else if (event.type === 'message_delta') {
-        outputTokens = event.usage?.outputTokens || 0
-      } else if (event.type === 'message_stop') {
-        // Create and yield final assistant message
-        const assistantMessage: AssistantMessage = {
-          type: 'assistant',
-          uuid: messageId as `${string}-${string}-${string}-${string}-${string}`,
-          message: {
+      switch (event.type) {
+        case 'message_start':
+          anthropicEvent.message = {
             id: messageId,
             type: 'message',
             role: 'assistant',
-            content: [{ type: 'text', text: fullContent }],
-            model: model,
-            stop_reason: 'end_turn',
+            content: [],
+            model,
+            stop_reason: null,
             stop_sequence: null,
             usage: {
-              input_tokens: inputTokens,
-              output_tokens: outputTokens,
+              input_tokens: event.message?.usage?.inputTokens || 0,
+              output_tokens: 0,
             },
-          },
-          costUSD: 0,
-        }
-        yield assistantMessage
+          }
+          inputTokens = event.message?.usage?.inputTokens || 0
+          break
+          
+        case 'content_block_start':
+          anthropicEvent.index = event.index
+          // Key fix: contentBlock (camelCase) → content_block (snake_case)
+          if (event.contentBlock) {
+            const cb = event.contentBlock
+            if (cb.type === 'tool_use') {
+              anthropicEvent.content_block = {
+                type: 'tool_use',
+                id: cb.id || '',
+                name: cb.name || '',
+                input: cb.input || {},
+              }
+            } else {
+              anthropicEvent.content_block = {
+                type: cb.type || 'text',
+                text: cb.text || '',
+              }
+            }
+          } else {
+            anthropicEvent.content_block = { type: 'text', text: '' }
+          }
+          break
+          
+        case 'content_block_delta':
+          anthropicEvent.index = event.index
+          if (event.delta) {
+            if (event.delta.type === 'text_delta') {
+              anthropicEvent.delta = { type: 'text_delta', text: event.delta.text || '' }
+              fullContent += event.delta.text || ''
+            } else if (event.delta.type === 'thinking_delta') {
+              anthropicEvent.delta = { type: 'thinking_delta', thinking: event.delta.thinking || '' }
+            } else if (event.delta.partialJson !== undefined) {
+              anthropicEvent.delta = { type: 'input_json_delta', partial_json: event.delta.partialJson }
+            } else {
+              anthropicEvent.delta = event.delta
+            }
+          }
+          break
+          
+        case 'content_block_stop':
+          anthropicEvent.index = event.index
+          break
+          
+        case 'message_delta':
+          anthropicEvent.delta = { stop_reason: 'end_turn', stop_sequence: null }
+          anthropicEvent.usage = { output_tokens: event.usage?.outputTokens || 0 }
+          outputTokens = event.usage?.outputTokens || 0
+          break
+          
+        case 'message_stop':
+          // No additional properties needed
+          break
+          
+        default:
+          // Copy all properties for unknown event types
+          Object.assign(anthropicEvent, event)
+          break
       }
+      
+      // Yield in the format the UI expects: { type: 'stream_event', event: <Anthropic-format event> }
+      yield { type: 'stream_event', event: anthropicEvent } as StreamEvent
     }
+    traceMiniMaxVision('queryModelWithProvider.done', {
+      providerName,
+      model,
+      eventCount,
+      fullContentLength: fullContent.length,
+    })
+    
+    // Yield final assistant message
+    const assistantMessage: AssistantMessage = {
+      type: 'assistant',
+      uuid: messageId as `${string}-${string}-${string}-${string}-${string}`,
+      message: {
+        id: messageId,
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'text', text: fullContent }],
+        model: model,
+        stop_reason: 'end_turn',
+        stop_sequence: null,
+        usage: {
+          input_tokens: inputTokens,
+          output_tokens: outputTokens,
+        },
+      },
+      costUSD: 0,
+    }
+    yield assistantMessage
   } catch (error) {
-    // Return error as assistant message using the standard error format
     const errorMsg = error instanceof Error ? error.message : String(error)
     yield getAssistantMessageFromError(
       new Error(`${providerName} API error: ${errorMsg}`),
@@ -1125,20 +1234,52 @@ async function* queryModel(
 > {
   // ============================================================================
   // MULTI-MODEL PROVIDER SUPPORT
-  // MiniMax supports Anthropic SDK protocol, so we use it directly by setting
-  // ANTHROPIC_BASE_URL to https://api.minimaxi.com/anthropic
-  // The provider check is kept for future use with truly non-Anthropic providers
+  // MiniMax supports Anthropic SDK protocol for M2.7 (text-only).
+  // For image input, we switch to a MiniMax multimodal model via
+  // the OpenAI-compatible API, using queryModelWithProvider which converts
+  // provider StreamEvents to the Anthropic SDK format expected by the UI.
   // ============================================================================
   const modelProvider = (process.env.MODEL_PROVIDER || 'minimax').toLowerCase()
   
-  // For MiniMax: Set the base URL for Anthropic SDK
-  if (modelProvider === 'minimax' && !process.env.ANTHROPIC_BASE_URL) {
-    process.env.ANTHROPIC_BASE_URL = 'https://api.minimaxi.com/anthropic'
-    // Use MiniMax API key as Anthropic API key
+  if (modelProvider === 'minimax') {
+    // Detect if any user message contains an image
+    const hasImages = messages.some(msg => {
+      if (msg.type !== 'user') return false
+      const content = (msg as { message?: { content?: unknown } }).message?.content
+      if (!Array.isArray(content)) return false
+      return content.some((block: { type?: string }) => block.type === 'image')
+    })
+    
+    if (hasImages) {
+      // Use a vision-capable MiniMax model for image understanding (M2.7 is text-only)
+      const visionModel = process.env.MINIMAX_VISION_MODEL || 'MiniMax-Text-01'
+      const normalizedMessages = normalizeMessagesForAPI(messages, tools)
+      traceMiniMaxVision('queryModel.detectedImageInput', {
+        visionModel,
+        rawMessages: messages.length,
+        normalizedMessages: normalizedMessages.length,
+      })
+      yield* queryModelWithProvider(
+        normalizedMessages,
+        systemPrompt,
+        tools,
+        signal,
+        { ...options, model: visionModel },
+        'minimax-vision',
+      )
+      return
+    }
+    
+    // 无图片：使用 M2.7 通过 Anthropic SDK
+    if (!process.env.ANTHROPIC_BASE_URL) {
+      process.env.ANTHROPIC_BASE_URL = 'https://api.minimaxi.com/anthropic'
+    }
     if (process.env.MINIMAX_API_KEY && !process.env.ANTHROPIC_API_KEY) {
       process.env.ANTHROPIC_API_KEY = process.env.MINIMAX_API_KEY
     }
   }
+  
+  const processedMessages = messages
   
   // For truly non-Anthropic-compatible providers (future use)
   if (modelProvider !== 'anthropic' && modelProvider !== 'minimax' && modelProvider !== 'glm') {
@@ -1380,11 +1521,11 @@ async function* queryModel(
   // Normalize messages before building system prompt (needed for fingerprinting)
   // Instrumentation: Track message count before normalization
   logEvent('tengu_api_before_normalize', {
-    preNormalizedMessageCount: messages.length,
+    preNormalizedMessageCount: processedMessages.length,
   })
 
   queryCheckpoint('query_message_normalization_start')
-  let messagesForAPI = normalizeMessagesForAPI(messages, filteredTools)
+  let messagesForAPI = normalizeMessagesForAPI(processedMessages, filteredTools)
   queryCheckpoint('query_message_normalization_end')
 
   // Model-specific post-processing: strip tool-search-specific fields if the

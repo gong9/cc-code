@@ -200,6 +200,18 @@ export async function initializeBuiltinAdapters(): Promise<void> {
     })
   })
 
+  // MiniMax Vision: defaults to a multimodal text model for image understanding
+  registerProviderFactory('minimax-vision', (config) => {
+    const { MiniMaxAdapter } = require('./MiniMaxAdapter.js') as typeof import('./MiniMaxAdapter.js')
+    return new MiniMaxAdapter({
+      apiKey: config?.apiKey || process.env.MINIMAX_API_KEY,
+      baseUrl: config?.baseUrl || process.env.MINIMAX_BASE_URL || 'https://api.minimaxi.com/v1',
+      model: config?.model || process.env.MINIMAX_VISION_MODEL || 'MiniMax-Text-01',
+      timeout: config?.timeout,
+      maxRetries: config?.maxRetries,
+    })
+  })
+
   registerProviderFactory('glm', (config) => {
     const { GLMAdapter } = require('./GLMAdapter.js') as typeof import('./GLMAdapter.js')
     return new GLMAdapter({

@@ -64,7 +64,12 @@ export function shouldUseMultiModelProvider(): boolean {
  */
 export function convertToUnifiedMessages(messages: Message[]): UnifiedMessage[] {
   return messages.map(msg => {
-    const role = msg.type === 'user' ? 'user' : 'assistant'
+    const role =
+      msg.type === 'user'
+        ? 'user'
+        : msg.type === 'system'
+          ? 'system'
+          : 'assistant'
     const content = msg.message?.content
 
     if (typeof content === 'string') {
@@ -77,11 +82,31 @@ export function convertToUnifiedMessages(messages: Message[]): UnifiedMessage[] 
           return { type: 'text' as const, text: c }
         }
 
-        const block = c as { type: string; text?: string; id?: string; name?: string; input?: unknown; tool_use_id?: string; content?: unknown }
+        const block = c as { 
+          type: string
+          text?: string
+          id?: string
+          name?: string
+          input?: unknown
+          tool_use_id?: string
+          content?: unknown
+          source?: { type?: string; media_type?: string; data?: string; url?: string }
+        }
         
         switch (block.type) {
           case 'text':
             return { type: 'text' as const, text: block.text || '' }
+          case 'image':
+            // 处理图片内容块
+            return {
+              type: 'image' as const,
+              source: {
+                type: (block.source?.type as 'base64' | 'url') || 'base64',
+                mediaType: block.source?.media_type,
+                data: block.source?.data,
+                url: block.source?.url,
+              },
+            }
           case 'tool_use':
             return {
               type: 'tool_use' as const,

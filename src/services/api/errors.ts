@@ -458,6 +458,21 @@ export function getAssistantMessageFromError(
         content: `${providerName} API Key 无效或未设置: ${error.message}`,
       })
     }
+    if (
+      error instanceof Error &&
+      process.env.MODEL_PROVIDER?.toLowerCase() === 'minimax' &&
+      error.message.includes('token plan not support model')
+    ) {
+      const matchedModel = error.message.match(/support model,\s*([^)\s]+(?:\s*[^)]*)?)(?:\s*\(\d+\))?/i)
+      const unsupportedModel = matchedModel?.[1]?.trim()
+      const modelSuffix = unsupportedModel ? `（${unsupportedModel}）` : ''
+      return createAssistantAPIErrorMessage({
+        error: 'invalid_request',
+        content:
+          `当前 MiniMax 套餐不支持图片模型${modelSuffix}。` +
+          '请开通支持视觉模型的 Token Plan，或更换支持图片识别的模型/API Key 后再试。',
+      })
+    }
   }
 
   // Check for SDK timeout errors

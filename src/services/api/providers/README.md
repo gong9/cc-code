@@ -8,10 +8,14 @@
 
 | Provider | 模型 | 能力 | 默认 |
 |----------|------|------|------|
-| `minimax` | MiniMax-M1, M2, **M2.7** | streaming, tool use, vision, thinking (M2.7) | ✅ |
+| `minimax` | MiniMax-M1, M2, **M2.7** | streaming, tool use, thinking (M2.7) | ✅ |
+| `minimax` | **abab6.5s**, abab6.5, abab7-preview | streaming, tool use, **vision** | 自动切换 |
 | `anthropic` | Claude 4, Claude 3.5, Claude 3 | 完整支持 (streaming, tool use, vision, thinking) | |
 | `openai-compat` | GPT-4, GPT-3.5, 及兼容 API | streaming, tool use, vision | |
 | `glm` | GLM-4, GLM-5, GLM-4V | streaming, tool use, vision | |
+
+> 💡 **MiniMax Vision 支持**: 当检测到图片时，系统会自动从 M2.7 切换到 abab 系列模型（支持 Vision）。
+> 可通过 `MINIMAX_VISION_MODEL` 环境变量指定 Vision 模型（默认：`abab6.5s-chat`）。
 
 ## 快速开始
 

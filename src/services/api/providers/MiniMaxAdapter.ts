@@ -9,6 +9,7 @@
  * API 文档: https://platform.minimaxi.com/docs
  */
 
+import { appendFile } from 'fs/promises'
 import { BaseAdapter } from './BaseAdapter.js'
 import type {
   ChatParams,
@@ -21,10 +22,32 @@ import type {
 } from './types.js'
 import { ProviderError } from './types.js'
 
+const MINIMAX_VISION_TRACE_FILE = '.tmp-minimax-vision-trace.log'
+
+function traceMiniMaxVision(event: string, data?: Record<string, unknown>): void {
+  const line = `[${new Date().toISOString()}] ${event}${data ? ` ${JSON.stringify(data)}` : ''}\n`
+  void appendFile(MINIMAX_VISION_TRACE_FILE, line).catch(() => {})
+}
+
+/** MiniMax API 图片内容块 (OpenAI 兼容格式) */
+interface MiniMaxImageContent {
+  type: 'image_url'
+  image_url: { url: string }
+}
+
+/** MiniMax API 文本内容块 */
+interface MiniMaxTextContent {
+  type: 'text'
+  text: string
+}
+
+/** MiniMax API 消息内容 (支持多模态) */
+type MiniMaxMessageContent = string | Array<MiniMaxTextContent | MiniMaxImageContent>
+
 /** MiniMax API 消息格式 */
 interface MiniMaxMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
-  content?: string
+  content?: MiniMaxMessageContent
   name?: string
   tool_calls?: Array<{
     id: string
@@ -72,7 +95,9 @@ interface MiniMaxStreamChunk {
   created: number
   choices: Array<{
     index: number
-    delta: Partial<MiniMaxMessage> & {
+    delta: {
+      role?: 'assistant'
+      content?: string  // 流式响应中 content 总是字符串（文本增量）
       tool_calls?: Array<{
         index: number
         id?: string
@@ -89,21 +114,50 @@ interface MiniMaxStreamChunk {
   }
 }
 
+interface MiniMaxStreamErrorChunk {
+  type?: string
+  error?: {
+    type?: string
+    message?: string
+    http_code?: string
+  }
+  request_id?: string
+}
+
+function isMiniMaxErrorChunk(value: unknown): value is MiniMaxStreamErrorChunk {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const chunk = value as MiniMaxStreamErrorChunk
+  return !!chunk.error?.message
+}
+
 /**
  * MiniMax 适配器
+ * 
+ * 支持两类模型：
+ * - M2.7 系列：纯文本模型，不支持 Vision
+ * - 多模态模型：支持 Vision，例如 MiniMax-Text-01 / abab 系列
  */
 export class MiniMaxAdapter extends BaseAdapter {
   readonly name = 'minimax'
   readonly displayName = 'MiniMax'
 
-  readonly capabilities: ProviderCapabilities = {
-    streaming: true,
-    toolUse: true,
-    vision: true,
-    thinking: true, // M2.7 支持 Interleaved Thinking
-    systemPrompt: true,
-    maxContextLength: 1_000_000, // MiniMax-M1 支持百万 token
-    maxOutputTokens: 16_384,
+  // Capabilities are determined by the model type
+  get capabilities(): ProviderCapabilities {
+    const normalizedModel = this.model?.toLowerCase() || ''
+    const isVisionModel =
+      normalizedModel.includes('abab') ||
+      normalizedModel.includes('text-01')
+    return {
+      streaming: true,
+      toolUse: true,
+      vision: isVisionModel, // 多模态模型支持 Vision，M2.7 不支持
+      thinking: !isVisionModel, // M2.7 支持 Interleaved Thinking，多模态模型不支持
+      systemPrompt: true,
+      maxContextLength: 1_000_000,
+      maxOutputTokens: 16_384,
+    }
   }
 
   private groupId?: string
@@ -174,6 +228,26 @@ export class MiniMaxAdapter extends BaseAdapter {
                     : this.extractTextContent(toolResult.content),
               })
             }
+            continue
+          }
+
+          // 检查是否包含图片 (MiniMax Vision)
+          const hasImage = msg.content.some(c => c.type === 'image')
+          if (hasImage) {
+            const contentArray: Array<MiniMaxTextContent | MiniMaxImageContent> = []
+            for (const c of msg.content) {
+              if (c.type === 'text') {
+                contentArray.push({ type: 'text' as const, text: c.text })
+              } else if (c.type === 'image') {
+                // 支持 url 和 base64 两种格式
+                const imageUrl = c.source.url || 
+                  (c.source.data ? `data:${c.source.mediaType || 'image/png'};base64,${c.source.data}` : '')
+                if (imageUrl) {
+                  contentArray.push({ type: 'image_url' as const, image_url: { url: imageUrl } })
+                }
+              }
+            }
+            result.push({ role: 'user', content: contentArray })
             continue
           }
         }
@@ -256,11 +330,21 @@ export class MiniMaxAdapter extends BaseAdapter {
     }
 
     try {
+      traceMiniMaxVision('MiniMaxAdapter.chat.request', {
+        model,
+        url,
+        messageCount: Array.isArray(body.messages) ? body.messages.length : 0,
+      })
       const response = await fetch(url, {
         method: 'POST',
         headers: this.getHeaders(),
         body: JSON.stringify(body),
         signal: params.signal,
+      })
+      traceMiniMaxVision('MiniMaxAdapter.chat.response', {
+        model,
+        status: response.status,
+        ok: response.ok,
       })
 
       if (!response.ok) {
@@ -298,6 +382,106 @@ export class MiniMaxAdapter extends BaseAdapter {
       let contentIndex = 0
       let currentContent = ''
       const toolCalls: Map<number, { id: string; name: string; arguments: string }> = new Map()
+      let messageStopped = false
+
+      const emitStopEvents = async function* (): AsyncGenerator<StreamEvent, void, unknown> {
+        if (currentContent) {
+          yield { type: 'content_block_stop', index: contentIndex }
+        }
+        for (const [idx, tc] of toolCalls) {
+          yield {
+            type: 'content_block_start',
+            index: idx + 1,
+            contentBlock: {
+              type: 'tool_use',
+              id: tc.id,
+              name: tc.name,
+              input: JSON.parse(tc.arguments || '{}'),
+            },
+          }
+          yield { type: 'content_block_stop', index: idx + 1 }
+        }
+        yield { type: 'message_stop' }
+      }
+
+      const processSseLine = async function* (line: string): AsyncGenerator<StreamEvent, boolean, unknown> {
+        if (!line.startsWith('data: ')) {
+          return false
+        }
+
+        const data = line.slice(6).trim()
+        if (data === '[DONE]') {
+          yield* emitStopEvents()
+          return true
+        }
+
+        const parsed = JSON.parse(data) as MiniMaxStreamChunk | MiniMaxStreamErrorChunk
+        if (isMiniMaxErrorChunk(parsed)) {
+          throw new ProviderError(
+            `MiniMax API error: ${parsed.error?.message || 'unknown error'}`,
+            parsed.error?.type === 'authentication_error'
+              ? 'authentication_error'
+              : parsed.error?.type === 'rate_limit_error'
+                ? 'rate_limit_error'
+                : 'api_error',
+            parsed.error?.http_code ? parseInt(parsed.error.http_code, 10) : undefined,
+            this.name,
+          )
+        }
+
+        try {
+          const chunk: MiniMaxStreamChunk = parsed as MiniMaxStreamChunk
+          const choice = chunk.choices[0]
+          if (!choice) {
+            return false
+          }
+
+          const delta = choice.delta
+
+          if (delta.content) {
+            if (!currentContent) {
+              yield {
+                type: 'content_block_start',
+                index: contentIndex,
+                contentBlock: { type: 'text', text: '' },
+              }
+            }
+            currentContent += delta.content
+            yield {
+              type: 'content_block_delta',
+              index: contentIndex,
+              delta: { type: 'text_delta', text: delta.content },
+            }
+          }
+
+          if (delta.tool_calls) {
+            for (const tc of delta.tool_calls) {
+              const existing = toolCalls.get(tc.index) || { id: '', name: '', arguments: '' }
+              if (tc.id) existing.id = tc.id
+              if (tc.function?.name) existing.name = tc.function.name
+              if (tc.function?.arguments) existing.arguments += tc.function.arguments
+              toolCalls.set(tc.index, existing)
+            }
+          }
+
+          if (chunk.usage) {
+            yield {
+              type: 'message_delta',
+              usage: {
+                inputTokens: chunk.usage.prompt_tokens,
+                outputTokens: chunk.usage.completion_tokens,
+              },
+            }
+          }
+        } catch {
+          traceMiniMaxVision('MiniMaxAdapter.chat.unparsedLine', {
+            model,
+            preview: data.slice(0, 200),
+          })
+        }
+
+        return false
+      }
 
       while (true) {
         const { done, value } = await reader.read()
@@ -308,79 +492,35 @@ export class MiniMaxAdapter extends BaseAdapter {
         buffer = lines.pop() || ''
 
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6).trim()
-            if (data === '[DONE]') {
-              if (currentContent) {
-                yield { type: 'content_block_stop', index: contentIndex }
-              }
-              for (const [idx, tc] of toolCalls) {
-                yield {
-                  type: 'content_block_start',
-                  index: idx + 1,
-                  contentBlock: {
-                    type: 'tool_use',
-                    id: tc.id,
-                    name: tc.name,
-                    input: JSON.parse(tc.arguments || '{}'),
-                  },
-                }
-                yield { type: 'content_block_stop', index: idx + 1 }
-              }
-              yield { type: 'message_stop' }
-              return
-            }
-
-            try {
-              const chunk: MiniMaxStreamChunk = JSON.parse(data)
-              const choice = chunk.choices[0]
-              if (!choice) continue
-
-              const delta = choice.delta
-
-              // 处理文本内容
-              if (delta.content) {
-                if (!currentContent) {
-                  yield {
-                    type: 'content_block_start',
-                    index: contentIndex,
-                    contentBlock: { type: 'text', text: '' },
-                  }
-                }
-                currentContent += delta.content
-                yield {
-                  type: 'content_block_delta',
-                  index: contentIndex,
-                  delta: { type: 'text_delta', text: delta.content },
-                }
-              }
-
-              // 处理工具调用
-              if (delta.tool_calls) {
-                for (const tc of delta.tool_calls) {
-                  const existing = toolCalls.get(tc.index) || { id: '', name: '', arguments: '' }
-                  if (tc.id) existing.id = tc.id
-                  if (tc.function?.name) existing.name = tc.function.name
-                  if (tc.function?.arguments) existing.arguments += tc.function.arguments
-                  toolCalls.set(tc.index, existing)
-                }
-              }
-
-              // 处理 usage
-              if (chunk.usage) {
-                yield {
-                  type: 'message_delta',
-                  usage: {
-                    inputTokens: chunk.usage.prompt_tokens,
-                    outputTokens: chunk.usage.completion_tokens,
-                  },
-                }
-              }
-            } catch {
-              // 忽略解析错误
-            }
+          const stopped = yield* processSseLine(line.trimEnd())
+          if (stopped) {
+            messageStopped = true
+            return
           }
         }
+      }
+
+      const flushedBuffer = buffer + decoder.decode()
+      if (flushedBuffer.trim()) {
+        traceMiniMaxVision('MiniMaxAdapter.chat.flushBuffer', {
+          model,
+          length: flushedBuffer.length,
+          preview: flushedBuffer.slice(0, 200),
+        })
+        const stopped = yield* processSseLine(flushedBuffer.trim())
+        if (stopped) {
+          messageStopped = true
+          return
+        }
+      }
+
+      if (!messageStopped) {
+        traceMiniMaxVision('MiniMaxAdapter.chat.eofWithoutDone', {
+          model,
+          hadContent: currentContent.length > 0,
+          toolCalls: toolCalls.size,
+        })
+        yield* emitStopEvents()
       }
     } catch (error) {
       if (error instanceof ProviderError) {
@@ -469,7 +609,17 @@ export class MiniMaxAdapter extends BaseAdapter {
       const message = choice.message
 
       if (message.content) {
-        content.push({ type: 'text', text: message.content })
+        // message.content 可以是字符串或数组
+        if (typeof message.content === 'string') {
+          content.push({ type: 'text', text: message.content })
+        } else {
+          // 从数组中提取文本内容
+          for (const block of message.content) {
+            if (block.type === 'text') {
+              content.push({ type: 'text', text: block.text })
+            }
+          }
+        }
       }
 
       if (message.tool_calls) {
@@ -542,6 +692,7 @@ export class MiniMaxAdapter extends BaseAdapter {
       'MiniMax-M1',
       'MiniMax-M2',
       'MiniMax-M2.7',
+      'MiniMax-Text-01',
       'abab6.5s-chat',
       'abab6.5g-chat',
       'abab6.5t-chat',
