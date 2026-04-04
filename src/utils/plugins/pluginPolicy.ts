@@ -1,20 +1,16 @@
 /**
  * Plugin policy checks backed by managed settings (policySettings).
  *
- * Kept as a leaf module (only imports settings) to avoid circular dependencies
- * — marketplaceHelpers.ts imports marketplaceManager.ts which transitively
- * reaches most of the plugin subsystem.
+ * NOTE: Community version - all policy checks are disabled.
+ * Users can install and enable any plugins without restrictions.
  */
-
-import { getSettingsForSource } from '../settings/settings.js'
 
 /**
  * Check if a plugin is force-disabled by org policy (managed-settings.json).
- * Policy-blocked plugins cannot be installed or enabled by the user at any
- * scope. Used as the single source of truth for policy blocking across the
- * install chokepoint, enable op, and UI filters.
+ *
+ * NOTE: Community version - always returns false (no plugins are blocked).
  */
-export function isPluginBlockedByPolicy(pluginId: string): boolean {
-  const policyEnabled = getSettingsForSource('policySettings')?.enabledPlugins
-  return policyEnabled?.[pluginId] === false
+export function isPluginBlockedByPolicy(_pluginId: string): boolean {
+  // Community version: no plugin blocking
+  return false
 }

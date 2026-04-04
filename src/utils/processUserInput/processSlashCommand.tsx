@@ -330,6 +330,8 @@ export async function processSlashCommand(inputString: string, precedingInputBlo
   const sanitizedCommandName = isMcp ? 'mcp' : !builtInCommandNames().has(commandName) ? 'custom' : commandName;
 
   // Check if it's a real command before processing
+  // DEBUG: Log available commands to find why /plugin is not found
+  logForDebugging(`[DEBUG] Looking for command: ${commandName}, available commands: ${context.options.commands.map(c => c.name).join(', ')}`);
   if (!hasCommand(commandName, context.options.commands)) {
     // Check if this looks like a command name vs a file path or other input
     // Also check if it's an actual file path that exists

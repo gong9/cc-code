@@ -21,9 +21,21 @@ echo "say hello" | bun run src/entrypoints/cli.tsx -p
 
 # Build (outputs dist/cli.js, ~25MB)
 bun run build
-```
 
-No test runner is configured. No linter is configured.
+# Lint / Format
+bun run lint           # Check with biome
+bun run lint:fix      # Auto-fix lint issues
+bun run format        # Format code with biome
+
+# Docs (VitePress)
+bun run docs:dev      # Start docs dev server
+bun run docs:build    # Build docs
+bun run docs:preview  # Preview built docs
+
+# Other
+bun test              # Run tests
+bun run health        # Health check script
+bun run check:unused  # Check for unused deps (knip)
 
 ## Architecture
 

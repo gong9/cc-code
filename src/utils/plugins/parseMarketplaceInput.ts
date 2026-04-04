@@ -155,8 +155,71 @@ export async function parseMarketplaceInput(
     return ref ? { source: 'github', repo, ref } : { source: 'github', repo }
   }
 
-  // NPM packages not yet implemented
-  // Returning null for unrecognized input
+  // Handle npm packages
+  // Supports:
+  // - npm:package-name
+  // - npm:@scope/package
+  // - npm:package@version
+  // - npm:@scope/package@version
+  // - @scope/package (scoped packages)
+  // - @scope/package@version
+  if (trimmed.startsWith('npm:')) {
+    const npmSpec = trimmed.slice(4) // Remove 'npm:' prefix
+    const parsed = parseNpmPackageSpec(npmSpec)
+    if (parsed) {
+      return parsed.version
+        ? { source: 'npm', package: parsed.name, version: parsed.version }
+        : { source: 'npm', package: parsed.name }
+    }
+    return { error: `Invalid npm package specifier: ${npmSpec}` }
+  }
+
+  // Handle scoped npm packages without prefix (@scope/package)
+  if (trimmed.startsWith('@') && trimmed.includes('/')) {
+    const parsed = parseNpmPackageSpec(trimmed)
+    if (parsed) {
+      return parsed.version
+        ? { source: 'npm', package: parsed.name, version: parsed.version }
+        : { source: 'npm', package: parsed.name }
+    }
+  }
 
   return null
+}
+
+/**
+ * Parse npm package specifier into name and version
+ */
+function parseNpmPackageSpec(spec: string): { name: string; version?: string } | null {
+  if (!spec) return null
+
+  // Handle scoped packages (@scope/name@version)
+  if (spec.startsWith('@')) {
+    const slashIndex = spec.indexOf('/')
+    if (slashIndex === -1) return null
+
+    const afterScope = spec.slice(slashIndex + 1)
+    const atIndex = afterScope.lastIndexOf('@')
+
+    if (atIndex === -1) {
+      // No version: @scope/name
+      return { name: spec }
+    }
+    // With version: @scope/name@version
+    return {
+      name: spec.slice(0, slashIndex + 1 + atIndex),
+      version: afterScope.slice(atIndex + 1),
+    }
+  }
+
+  // Handle regular packages (name@version)
+  const atIndex = spec.lastIndexOf('@')
+  if (atIndex === -1 || atIndex === 0) {
+    // No version or invalid
+    return { name: spec }
+  }
+  return {
+    name: spec.slice(0, atIndex),
+    version: spec.slice(atIndex + 1),
+  }
 }

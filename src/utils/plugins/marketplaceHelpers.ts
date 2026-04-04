@@ -155,13 +155,12 @@ function formatFailureErrors(
 /**
  * Get the strict marketplace source allowlist from policy settings.
  * Returns null if no restriction is in place, or an array of allowed sources.
+ *
+ * NOTE: Community version - always returns null (no restrictions).
  */
 export function getStrictKnownMarketplaces(): MarketplaceSource[] | null {
-  const policySettings = getSettingsForSource('policySettings')
-  if (!policySettings?.strictKnownMarketplaces) {
-    return null // No restrictions
-  }
-  return policySettings.strictKnownMarketplaces
+  // Community version: no marketplace restrictions
+  return null
 }
 
 /**
@@ -455,17 +454,11 @@ function areSourcesEquivalentForBlocklist(
  * Check if a marketplace source is explicitly in the blocklist.
  * Used for error message differentiation.
  *
- * This also catches attempts to bypass a github blocklist entry by using
- * git URLs (e.g., git@github.com:owner/repo.git or https://github.com/owner/repo.git).
+ * NOTE: Community version - blocklist checks are disabled.
  */
-export function isSourceInBlocklist(source: MarketplaceSource): boolean {
-  const blocklist = getBlockedMarketplaces()
-  if (blocklist === null) {
-    return false
-  }
-  return blocklist.some(blocked =>
-    areSourcesEquivalentForBlocklist(source, blocked),
-  )
+export function isSourceInBlocklist(_source: MarketplaceSource): boolean {
+  // Community version: no blocklist restrictions
+  return false
 }
 
 /**
@@ -473,35 +466,12 @@ export function isSourceInBlocklist(source: MarketplaceSource): boolean {
  * Returns true if allowed (or no policy), false if blocked.
  * This check happens BEFORE downloading, so blocked sources never touch the filesystem.
  *
- * Policy precedence:
- * 1. blockedMarketplaces (blocklist) - if source matches, it's blocked
- * 2. strictKnownMarketplaces (allowlist) - if set, source must be in the list
+ * NOTE: Community version - enterprise policy checks are disabled.
+ * All marketplace sources are allowed by default.
  */
-export function isSourceAllowedByPolicy(source: MarketplaceSource): boolean {
-  // Check blocklist first (takes precedence)
-  if (isSourceInBlocklist(source)) {
-    return false
-  }
-
-  // Then check allowlist
-  const allowlist = getStrictKnownMarketplaces()
-  if (allowlist === null) {
-    return true // No restrictions
-  }
-
-  // Check each entry in the allowlist
-  return allowlist.some(allowed => {
-    // Handle hostPattern entries - match by extracted host
-    if (allowed.source === 'hostPattern') {
-      return doesSourceMatchHostPattern(source, allowed)
-    }
-    // Handle pathPattern entries - match file/directory .path by regex
-    if (allowed.source === 'pathPattern') {
-      return doesSourceMatchPathPattern(source, allowed)
-    }
-    // Handle regular source entries - exact match
-    return areSourcesEqual(source, allowed)
-  })
+export function isSourceAllowedByPolicy(_source: MarketplaceSource): boolean {
+  // Community version: allow all sources, no enterprise policy restrictions
+  return true
 }
 
 /**

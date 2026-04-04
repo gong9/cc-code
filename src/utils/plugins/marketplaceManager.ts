@@ -63,11 +63,9 @@ import {
   isSourceAllowedByPolicy,
   isSourceInBlocklist,
 } from './marketplaceHelpers.js'
-import {
-  OFFICIAL_MARKETPLACE_NAME,
-  OFFICIAL_MARKETPLACE_SOURCE,
-} from './officialMarketplace.js'
-import { fetchOfficialMarketplaceFromGcs } from './officialMarketplaceGcs.js'
+// Community version: official marketplace imports removed
+// import { OFFICIAL_MARKETPLACE_NAME, OFFICIAL_MARKETPLACE_SOURCE } from './officialMarketplace.js'
+// import { fetchOfficialMarketplaceFromGcs } from './officialMarketplaceGcs.js'
 import {
   deletePluginDataDir,
   getPluginSeedDirs,
@@ -155,37 +153,13 @@ export type DeclaredMarketplace = {
  * Get declared marketplace intent from merged settings and --add-dir sources.
  * This is what SHOULD exist — used by the reconciler to find gaps.
  *
- * The official marketplace is implicitly declared with `sourceIsFallback: true`
- * when any enabled plugin references it.
+ * Community version: No marketplace is implicitly declared.
+ * Users must explicitly add marketplaces via /plugin marketplace add.
  */
 export function getDeclaredMarketplaces(): Record<string, DeclaredMarketplace> {
-  const implicit: Record<string, DeclaredMarketplace> = {}
-
-  // Only the official marketplace can be implicitly declared — it's the one
-  // built-in source we know. Other marketplaces have no default source to inject.
-  // Explicitly-disabled entries (value: false) don't count.
-  const enabledPlugins = {
-    ...getAddDirEnabledPlugins(),
-    ...(getInitialSettings().enabledPlugins ?? {}),
-  }
-  for (const [pluginId, value] of Object.entries(enabledPlugins)) {
-    if (
-      value &&
-      parsePluginIdentifier(pluginId).marketplace === OFFICIAL_MARKETPLACE_NAME
-    ) {
-      implicit[OFFICIAL_MARKETPLACE_NAME] = {
-        source: OFFICIAL_MARKETPLACE_SOURCE,
-        sourceIsFallback: true,
-      }
-      break
-    }
-  }
-
-  // Lowest precedence: implicit < --add-dir < merged settings.
-  // An explicit extraKnownMarketplaces entry for claude-plugins-official
-  // in --add-dir or settings wins.
+  // Community version: no implicit marketplaces
+  // All marketplaces must be explicitly added by the user
   return {
-    ...implicit,
     ...getAddDirExtraMarketplaces(),
     ...(getInitialSettings().extraKnownMarketplaces ?? {}),
   } as any
@@ -1616,8 +1590,36 @@ async function loadAndCacheMarketplace(
       }
 
       case 'npm': {
-        // TODO: Implement npm package support
-        throw new Error('NPM marketplace sources not yet implemented')
+        // NPM package source - install package and find manifest
+        const { installNpmPlugin } = await import('./npmPluginInstall.js')
+        const fullSpec = source.version
+          ? `${source.package}@${source.version}`
+          : source.package
+        
+        safeCallProgress(onProgress, `Installing npm package: ${fullSpec}`)
+        const result = await installNpmPlugin(fullSpec, onProgress)
+        
+        if (!result.success || !result.marketplace) {
+          throw new Error(result.error || `Failed to install npm package: ${fullSpec}`)
+        }
+        
+        temporaryCachePath = result.installPath
+        cleanupNeeded = false // npm manages its own cleanup
+        
+        // Write marketplace.json to a predictable location for cache consistency
+        const npmCacheDir = join(cacheDir, `npm-${source.package.replace(/^@/, '').replace(/\//g, '-')}`)
+        await fs.mkdir(npmCacheDir)
+        const npmMarketplacePath = join(npmCacheDir, '.claude-plugin', 'marketplace.json')
+        await fs.mkdir(join(npmCacheDir, '.claude-plugin'))
+        writeFileSync_DEPRECATED(
+          npmMarketplacePath,
+          jsonStringify(result.marketplace, null, 2),
+          { encoding: 'utf-8', flush: true }
+        )
+        
+        marketplacePath = npmMarketplacePath
+        temporaryCachePath = npmCacheDir
+        break
       }
 
       case 'file': {
@@ -2309,30 +2311,8 @@ export async function refreshAllMarketplaces(): Promise<void> {
     if (entry.source.source === 'settings') {
       continue
     }
-    // inc-5046: same GCS intercept as refreshMarketplace() — bulk update
-    // hits this path on `claude plugin marketplace update` (no name arg).
-    if (name === OFFICIAL_MARKETPLACE_NAME) {
-      const sha = await fetchOfficialMarketplaceFromGcs(
-        entry.installLocation,
-        getMarketplacesCacheDir(),
-      )
-      if (sha !== null) {
-        config[name]!.lastUpdated = new Date().toISOString()
-        continue
-      }
-      if (
-        !getFeatureValue_CACHED_MAY_BE_STALE(
-          'tengu_plugin_official_mkt_git_fallback',
-          true,
-        )
-      ) {
-        logForDebugging(
-          `Skipping official marketplace bulk refresh: GCS failed, git fallback disabled`,
-        )
-        continue
-      }
-      // fall through to git
-    }
+    // Community version: no special handling for any marketplace name.
+    // All marketplaces are refreshed via git/URL.
     try {
       const { cachePath } = await loadAndCacheMarketplace(entry.source)
       config[name]!.lastUpdated = new Date().toISOString()
@@ -2425,43 +2405,8 @@ export async function refreshMarketplace(
       }
     }
 
-    // inc-5046: official marketplace fetches from a GCS mirror instead of
-    // git-cloning GitHub. Special-cased by NAME (not a new source type) so
-    // no data migration is needed — existing known_marketplaces.json entries
-    // still say source:'github', which is true (GCS is a mirror).
-    if (name === OFFICIAL_MARKETPLACE_NAME) {
-      const sha = await fetchOfficialMarketplaceFromGcs(
-        installLocation,
-        getMarketplacesCacheDir(),
-      )
-      if (sha !== null) {
-        config[name] = { ...entry, lastUpdated: new Date().toISOString() }
-        await saveKnownMarketplacesConfig(config)
-        return
-      }
-      // GCS failed — fall through to git ONLY if the kill-switch allows.
-      // Default true (backend write perms are pending as of inc-5046); flip
-      // to false via GrowthBook once the backend is confirmed live so new
-      // clients NEVER hit GitHub for the official marketplace.
-      if (
-        !getFeatureValue_CACHED_MAY_BE_STALE(
-          'tengu_plugin_official_mkt_git_fallback',
-          true,
-        )
-      ) {
-        // Throw, don't return — every other failure path in this function
-        // throws, and callers like ManageMarketplaces.tsx:259 increment
-        // updatedCount on any non-throwing return. A silent return would
-        // report "Updated 1 marketplace" when nothing was refreshed.
-        throw new Error(
-          'Official marketplace GCS fetch failed and git fallback is disabled',
-        )
-      }
-      logForDebugging('Official marketplace GCS failed; falling back to git', {
-        level: 'warn',
-      })
-      // ...falls through to source.source === 'github' branch below
-    }
+    // Community version: no special GCS handling for any marketplace.
+    // All marketplaces are refreshed via git/URL.
 
     // Update based on source type
     if (source.source === 'github' || source.source === 'git') {

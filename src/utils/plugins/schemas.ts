@@ -973,8 +973,12 @@ export const MarketplaceSourceSchema = lazySchema(() =>
     z.object({
       source: z.literal('npm'),
       package: NpmPackageNameSchema().describe(
-        'NPM package containing marketplace.json',
+        'NPM package name (e.g., "@scope/plugin" or "plugin-name")',
       ),
+      version: z
+        .string()
+        .optional()
+        .describe('NPM package version (e.g., "1.0.0", "latest", "^1.0.0")'),
     }),
     z.object({
       source: z.literal('file'),
