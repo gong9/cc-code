@@ -165,7 +165,7 @@ export async function installNpmPlugin(
         success: false,
         installPath,
         packageJson,
-        error: `Package ${name} does not appear to be a Claude Code plugin. ` +
+        error: `Package ${name} does not appear to be a Gong Code plugin. ` +
           'Expected .claude-plugin/marketplace.json or .claude-plugin/plugin.json',
       }
     }

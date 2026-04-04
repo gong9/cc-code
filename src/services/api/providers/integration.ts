@@ -1,7 +1,7 @@
 /**
  * Provider 集成模块
  * 
- * 提供与现有 Claude Code 代码的集成点，允许渐进式迁移到多模型架构。
+ * 提供与现有 Gong Code 代码的集成点，允许渐进式迁移到多模型架构。
  * 
  * 使用方式：
  * 1. 在项目初始化时调用 `initializeMultiModelSupport()`

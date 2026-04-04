@@ -1,6 +1,6 @@
 # 多模型适配器 (Multi-Model Providers)
 
-这个模块为 Claude Code 提供了多模型支持能力，允许使用不同的大模型后端。
+这个模块为 Gong Code 提供了多模型支持能力，允许使用不同的大模型后端。
 
 **默认配置：MiniMax M2.7**
 

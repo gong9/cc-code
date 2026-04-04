@@ -80,7 +80,7 @@ if (process.env.MODEL_PROVIDER === 'minimax') {
 const feature = (_name: string) => false;
 if (typeof globalThis.MACRO === "undefined") {
     (globalThis as any).MACRO = {
-        VERSION: "2.1.888",
+        VERSION: "0.1.5",
         BUILD_TIME: new Date().toISOString(),
         FEEDBACK_CHANNEL: "",
         ISSUES_EXPLAINER: "",
@@ -144,7 +144,7 @@ async function main(): Promise<void> {
     ) {
         // MACRO.VERSION is inlined at build time
         // biome-ignore lint/suspicious/noConsole:: intentional console output
-        console.log(`${MACRO.VERSION} (Claude Code)`);
+        console.log(`${MACRO.VERSION} (Gong Code)`);
         return;
     }
 

@@ -1,7 +1,7 @@
 /**
  * Default marketplace configuration for community version.
  *
- * This project is an independent Claude Code alternative.
+ * This project is an independent Gong Code alternative.
  * There is no "official" marketplace - all marketplaces are equal.
  * Users can add any marketplace they want.
  */

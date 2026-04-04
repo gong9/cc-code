@@ -1,7 +1,7 @@
 /**
  * Auto-install logic for marketplace - DISABLED for community version.
  *
- * This project is an independent, open-source Claude Code alternative
+ * This project is an independent, open-source Gong Code alternative
  * (similar to OpenCode - https://github.com/anomalyco/opencode).
  *
  * We do not auto-install any marketplace. Users can add marketplaces

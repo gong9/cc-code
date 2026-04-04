@@ -1,10 +1,10 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Gong Code when working with code in this repository.
 
 ## Project Overview
 
-This is a **reverse-engineered / decompiled** version of Anthropic's official Claude Code CLI tool. The goal is to restore core functionality while trimming secondary capabilities. Many modules are stubbed or feature-flagged off. The codebase has ~1341 tsc errors from decompilation (mostly `unknown`/`never`/`{}` types) — these do **not** block Bun runtime execution.
+This is **Gong Code**, an AI-powered CLI tool for software development. The codebase uses TypeScript/React with Bun runtime. Some modules are stubbed or feature-flagged off. The codebase has ~1341 tsc errors (mostly `unknown`/`never`/`{}` types) — these do **not** block Bun runtime execution.
 
 ## Commands
 
@@ -98,7 +98,7 @@ bun run check:unused  # Check for unused deps (knip)
 
 ### Feature Flag System
 
-All `feature('FLAG_NAME')` calls come from `bun:bundle` (a build-time API). In this decompiled version, `feature()` is polyfilled to always return `false` in `cli.tsx`. This means all Anthropic-internal features (COORDINATOR_MODE, KAIROS, PROACTIVE, etc.) are disabled.
+All `feature('FLAG_NAME')` calls come from `bun:bundle` (a build-time API). `feature()` is polyfilled to always return `false` in `cli.tsx`. This means experimental features (COORDINATOR_MODE, KAIROS, PROACTIVE, etc.) are disabled.
 
 ### Stubbed/Deleted Modules
 
