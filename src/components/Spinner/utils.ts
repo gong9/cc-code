@@ -1,13 +1,18 @@
 import type { RGBColor as RGBColorString } from '../../ink/styles.js'
 import type { RGBColor as RGBColorType } from './types.js'
 
+// 可爱小猫咪 loading 动画帧
+const CAT_FRAMES = [
+  '(=^ω^=)',   // 开心猫
+  '(=^-^=)',   // 眯眼猫  
+  '(=^ω^=)',   // 开心猫
+  '(=^o^=)',   // 惊讶猫
+  '(=^.^=)',   // 微笑猫
+  '(=^_^=)',   // 闭眼猫
+]
+
 export function getDefaultCharacters(): string[] {
-  if (process.env.TERM === 'xterm-ghostty') {
-    return ['·', '✢', '✳', '✶', '✻', '*'] // Use * instead of ✽ for Ghostty because the latter renders in a way that's slightly offset
-  }
-  return process.platform === 'darwin'
-    ? ['·', '✢', '✳', '✶', '✻', '✽']
-    : ['·', '✢', '*', '✶', '✻', '✽']
+  return CAT_FRAMES
 }
 
 // Interpolate between two RGB colors

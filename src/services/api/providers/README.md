@@ -39,7 +39,7 @@ export OPENAI_API_KEY=your-api-key
 export OPENAI_MODEL=gpt-4o
 ```
 
-### 2. 配置文件 (`~/.claude/settings.json`)
+### 2. 配置文件 (`~/.gong/settings.json`)
 
 ```json
 {

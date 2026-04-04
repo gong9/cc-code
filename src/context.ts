@@ -1,15 +1,15 @@
 import { feature } from 'bun:bundle'
 import memoize from 'lodash-es/memoize.js'
 import {
-  getAdditionalDirectoriesForClaudeMd,
-  setCachedClaudeMdContent,
+  getAdditionalDirectoriesForGongMd,
+  setCachedGongMdContent,
 } from './bootstrap/state.js'
 import { getLocalISODate } from './constants/common.js'
 import {
   filterInjectedMemoryFiles,
-  getClaudeMds,
+  getGongMds,
   getMemoryFiles,
-} from './utils/claudemd.js'
+} from './utils/gongmd.js'
 import { logForDiagnosticsNoPII } from './utils/diagLogs.js'
 import { isBareMode, isEnvTruthy } from './utils/envUtils.js'
 import { execFileNoThrow } from './utils/execFileNoThrow.js'
@@ -162,27 +162,27 @@ export const getUserContext = memoize(
     // CLAUDE_CODE_DISABLE_CLAUDE_MDS: hard off, always.
     // --bare: skip auto-discovery (cwd walk), BUT honor explicit --add-dir.
     // --bare means "skip what I didn't ask for", not "ignore what I asked for".
-    const shouldDisableClaudeMd =
+    const shouldDisableGongMd =
       isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_CLAUDE_MDS) ||
-      (isBareMode() && getAdditionalDirectoriesForClaudeMd().length === 0)
+      (isBareMode() && getAdditionalDirectoriesForGongMd().length === 0)
     // Await the async I/O (readFile/readdir directory walk) so the event
     // loop yields naturally at the first fs.readFile.
-    const claudeMd = shouldDisableClaudeMd
+    const gongMd = shouldDisableGongMd
       ? null
-      : getClaudeMds(filterInjectedMemoryFiles(await getMemoryFiles()))
+      : getGongMds(filterInjectedMemoryFiles(await getMemoryFiles()))
     // Cache for the auto-mode classifier (yoloClassifier.ts reads this
-    // instead of importing claudemd.ts directly, which would create a
+    // instead of importing gongmd.ts directly, which would create a
     // cycle through permissions/filesystem → permissions → yoloClassifier).
-    setCachedClaudeMdContent(claudeMd || null)
+    setCachedGongMdContent(gongMd || null)
 
     logForDiagnosticsNoPII('info', 'user_context_completed', {
       duration_ms: Date.now() - startTime,
-      claudemd_length: claudeMd?.length ?? 0,
-      claudemd_disabled: Boolean(shouldDisableClaudeMd),
+      gongmd_length: gongMd?.length ?? 0,
+      gongmd_disabled: Boolean(shouldDisableGongMd),
     })
 
     return {
-      ...(claudeMd && { claudeMd }),
+      ...(gongMd && { gongMd }),
       currentDate: `Today's date is ${getLocalISODate()}.`,
     }
   },

@@ -5,11 +5,11 @@ import {
   getLargeMemoryFiles,
   MAX_MEMORY_CHARACTER_COUNT,
   type MemoryFileInfo,
-} from "../claudemd";
+} from "../gongmd";
 
 function mockMemoryFile(overrides: Partial<MemoryFileInfo> = {}): MemoryFileInfo {
   return {
-    path: "/project/CLAUDE.md",
+    path: "/project/GONG.md",
     type: "Project",
     content: "test content",
     ...overrides,
@@ -65,16 +65,16 @@ describe("stripHtmlComments", () => {
 });
 
 describe("isMemoryFilePath", () => {
-  test("returns true for CLAUDE.md path", () => {
-    expect(isMemoryFilePath("/project/CLAUDE.md")).toBe(true);
+  test("returns true for GONG.md path", () => {
+    expect(isMemoryFilePath("/project/GONG.md")).toBe(true);
   });
 
-  test("returns true for CLAUDE.local.md path", () => {
-    expect(isMemoryFilePath("/project/CLAUDE.local.md")).toBe(true);
+  test("returns true for GONG.local.md path", () => {
+    expect(isMemoryFilePath("/project/GONG.local.md")).toBe(true);
   });
 
-  test("returns true for .claude/rules/ path", () => {
-    expect(isMemoryFilePath("/project/.claude/rules/foo.md")).toBe(true);
+  test("returns true for .gong/rules/ path", () => {
+    expect(isMemoryFilePath("/project/.gong/rules/foo.md")).toBe(true);
   });
 
   test("returns false for regular file", () => {
@@ -86,7 +86,7 @@ describe("isMemoryFilePath", () => {
   });
 
   test("returns false for .claude directory non-rules file", () => {
-    expect(isMemoryFilePath("/project/.claude/settings.json")).toBe(false);
+    expect(isMemoryFilePath("/project/.gong/settings.json")).toBe(false);
   });
 });
 

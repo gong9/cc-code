@@ -1,6 +1,6 @@
 /**
  * 多模型配置存储和读取模块
- * 配置保存在 ~/.claude/providers.json
+ * 配置保存在 ~/.gong/providers.json
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
@@ -44,7 +44,7 @@ export const PROVIDER_OPTIONS = [
 ] as const
 
 function getConfigDir(): string {
-  return process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude')
+  return process.env.GONG_CONFIG_DIR ?? process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.gong')
 }
 
 function getConfigPath(): string {

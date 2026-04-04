@@ -1,6 +1,6 @@
 import chokidar, { type FSWatcher } from 'chokidar'
 import * as platformPath from 'path'
-import { getAdditionalDirectoriesForClaudeMd } from '../../bootstrap/state.js'
+import { getAdditionalDirectoriesForGongMd } from '../../bootstrap/state.js'
 import {
   clearCommandMemoizationCaches,
   clearCommandsCache,
@@ -172,7 +172,7 @@ async function getWatchablePaths(): Promise<string[]> {
   const fs = getFsImplementation()
   const paths: string[] = []
 
-  // User skills directory (~/.claude/skills)
+  // User skills directory (~/.gong/skills)
   const userSkillsPath = getSkillsPath('userSettings', 'skills')
   if (userSkillsPath) {
     try {
@@ -183,7 +183,7 @@ async function getWatchablePaths(): Promise<string[]> {
     }
   }
 
-  // User commands directory (~/.claude/commands)
+  // User commands directory (~/.gong/commands)
   const userCommandsPath = getSkillsPath('userSettings', 'commands')
   if (userCommandsPath) {
     try {
@@ -194,7 +194,7 @@ async function getWatchablePaths(): Promise<string[]> {
     }
   }
 
-  // Project skills directory (.claude/skills)
+  // Project skills directory (.gong/skills)
   const projectSkillsPath = getSkillsPath('projectSettings', 'skills')
   if (projectSkillsPath) {
     try {
@@ -207,7 +207,7 @@ async function getWatchablePaths(): Promise<string[]> {
     }
   }
 
-  // Project commands directory (.claude/commands)
+  // Project commands directory (.gong/commands)
   const projectCommandsPath = getSkillsPath('projectSettings', 'commands')
   if (projectCommandsPath) {
     try {
@@ -221,8 +221,8 @@ async function getWatchablePaths(): Promise<string[]> {
   }
 
   // Additional directories (--add-dir) skills
-  for (const dir of getAdditionalDirectoriesForClaudeMd()) {
-    const additionalSkillsPath = platformPath.join(dir, '.claude', 'skills')
+  for (const dir of getAdditionalDirectoriesForGongMd()) {
+    const additionalSkillsPath = platformPath.join(dir, '.gong', 'skills')
     try {
       await fs.stat(additionalSkillsPath)
       paths.push(additionalSkillsPath)

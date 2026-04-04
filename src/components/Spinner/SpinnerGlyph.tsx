@@ -5,7 +5,7 @@ import { getTheme, type Theme } from '../../utils/theme.js';
 import { getDefaultCharacters, interpolateColor, parseRGB, toRGBColor } from './utils.js';
 const DEFAULT_CHARACTERS = getDefaultCharacters();
 const SPINNER_FRAMES = [...DEFAULT_CHARACTERS, ...[...DEFAULT_CHARACTERS].reverse()];
-const REDUCED_MOTION_DOT = '●';
+const REDUCED_MOTION_DOT = '(=^ω^=)';
 const REDUCED_MOTION_CYCLE_MS = 2000; // 2-second cycle: 1s visible, 1s dim
 const ERROR_RED = {
   r: 171,
@@ -33,11 +33,12 @@ export function SpinnerGlyph(t0) {
   const time = t3 === undefined ? 0 : t3;
   const [themeName] = useTheme();
   const theme = getTheme(themeName);
+  const CAT_WIDTH = 8; // (=^ω^=) 是 8 个字符宽
   if (reducedMotion) {
     const isDim = Math.floor(time / (REDUCED_MOTION_CYCLE_MS / 2)) % 2 === 1;
     let t4;
     if ($[0] !== isDim || $[1] !== messageColor) {
-      t4 = <Box flexWrap="wrap" height={1} width={2}><Text color={messageColor} dimColor={isDim}>{REDUCED_MOTION_DOT}</Text></Box>;
+      t4 = <Box flexWrap="wrap" height={1} width={CAT_WIDTH}><Text color={messageColor} dimColor={isDim}>{REDUCED_MOTION_DOT}</Text></Box>;
       $[0] = isDim;
       $[1] = messageColor;
       $[2] = t4;
@@ -52,12 +53,12 @@ export function SpinnerGlyph(t0) {
     const baseRGB = baseColorStr ? parseRGB(baseColorStr) : null;
     if (baseRGB) {
       const interpolated = interpolateColor(baseRGB, ERROR_RED, stalledIntensity);
-      return <Box flexWrap="wrap" height={1} width={2}><Text color={toRGBColor(interpolated)}>{spinnerChar}</Text></Box>;
+      return <Box flexWrap="wrap" height={1} width={CAT_WIDTH}><Text color={toRGBColor(interpolated)}>{spinnerChar}</Text></Box>;
     }
     const color = stalledIntensity > 0.5 ? "error" : messageColor;
     let t4;
     if ($[3] !== color || $[4] !== spinnerChar) {
-      t4 = <Box flexWrap="wrap" height={1} width={2}><Text color={color}>{spinnerChar}</Text></Box>;
+      t4 = <Box flexWrap="wrap" height={1} width={CAT_WIDTH}><Text color={color}>{spinnerChar}</Text></Box>;
       $[3] = color;
       $[4] = spinnerChar;
       $[5] = t4;
@@ -68,7 +69,7 @@ export function SpinnerGlyph(t0) {
   }
   let t4;
   if ($[6] !== messageColor || $[7] !== spinnerChar) {
-    t4 = <Box flexWrap="wrap" height={1} width={2}><Text color={messageColor}>{spinnerChar}</Text></Box>;
+    t4 = <Box flexWrap="wrap" height={1} width={CAT_WIDTH}><Text color={messageColor}>{spinnerChar}</Text></Box>;
     $[6] = messageColor;
     $[7] = spinnerChar;
     $[8] = t4;

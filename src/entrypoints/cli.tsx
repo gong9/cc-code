@@ -10,7 +10,7 @@ import { join } from 'path';
 
 // eslint-disable-next-line custom-rules/no-top-level-side-effects
 function loadProviderConfig(): void {
-    const configDir = process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude');
+    const configDir = process.env.GONG_CONFIG_DIR ?? process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.gong');
     const configPath = join(configDir, 'providers.json');
     
     try {
@@ -267,7 +267,7 @@ async function main(): Promise<void> {
     }
 
     // Fast-path for `claude ps|logs|attach|kill` and `--bg`/`--background`.
-    // Session management against the ~/.claude/sessions/ registry. Flag
+    // Session management against the ~/.gong/sessions/ registry. Flag
     // literals are inlined so bg.js only loads when actually dispatching.
     if (
         feature("BG_SESSIONS") &&

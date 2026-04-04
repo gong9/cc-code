@@ -7,16 +7,24 @@ import React, { useState, useCallback } from 'react'
 import { Box, Text, useInput } from '../ink.js'
 import { Select, type OptionWithDescription } from './CustomSelect/select.js'
 import {
-  PROVIDER_OPTIONS,
   setProviderConfig,
   readProvidersConfig,
 } from '../services/api/providers/providerConfig.js'
+import { Clawd } from './LogoV2/Clawd.js'
+import { useKeybinding } from '../keybindings/useKeybinding.js'
 
 type Step = 'select-provider' | 'input-key' | 'done'
 
 interface Props {
   onDone: () => void
 }
+
+const MINIMAX_API_URL = 'https://platform.minimax.chat/user-center/basic-information/interface-key'
+
+// 目前只支持 MiniMax
+const PROVIDER_OPTIONS = [
+  { value: 'minimax', label: 'MiniMax (推荐)', description: 'MiniMax M2.7 大模型' },
+] as const
 
 export function ProviderSetup({ onDone }: Props): React.ReactNode {
   const [step, setStep] = useState<Step>('select-provider')
@@ -25,6 +33,11 @@ export function ProviderSetup({ onDone }: Props): React.ReactNode {
   const [error, setError] = useState<string>('')
 
   const config = readProvidersConfig()
+
+  // 处理 Ctrl+C 退出
+  useKeybinding('app:interrupt', () => {
+    process.exit(0)
+  }, { context: 'Global', isActive: true })
 
   // Provider 选项
   const providerOptions: OptionWithDescription<string>[] = PROVIDER_OPTIONS.map(
@@ -72,22 +85,22 @@ export function ProviderSetup({ onDone }: Props): React.ReactNode {
     { isActive: step === 'input-key' },
   )
 
-  const getProviderLabel = (value: string): string => {
-    return PROVIDER_OPTIONS.find((p) => p.value === value)?.label ?? value
-  }
-
   if (step === 'select-provider') {
     return (
       <Box flexDirection="column" paddingX={1} gap={1}>
-        <Text bold color="cyan">
-          🤖 选择 AI 模型
-        </Text>
+        <Box flexDirection="row" gap={2} marginBottom={1}>
+          <Clawd pose="default" />
+          <Box flexDirection="column" justifyContent="center">
+            <Text bold color="cyan">Gong Code v{MACRO.VERSION}</Text>
+            <Text dimColor>AI 编程助手</Text>
+          </Box>
+        </Box>
         <Select
           options={providerOptions}
           defaultValue={config.defaultProvider}
           onChange={handleProviderSelect}
         />
-        <Text dimColor>使用 ↑↓ 选择，回车确认</Text>
+        <Text dimColor>回车确认</Text>
       </Box>
     )
   }
@@ -97,10 +110,9 @@ export function ProviderSetup({ onDone }: Props): React.ReactNode {
     
     return (
       <Box flexDirection="column" paddingX={1} gap={1}>
-        <Text bold color="cyan">
-          🔑 输入 {getProviderLabel(selectedProvider)} API Key
-        </Text>
-        <Box>
+        <Text bold color="cyan">🔑 输入 MiniMax API Key</Text>
+        <Text dimColor>获取地址: {MINIMAX_API_URL}</Text>
+        <Box marginTop={1}>
           <Text>API Key: </Text>
           <Text color="green">{maskedKey}</Text>
           <Text color="gray">▌</Text>
@@ -119,18 +131,13 @@ export function ProviderSetup({ onDone }: Props): React.ReactNode {
  */
 export function needsProviderSetup(): boolean {
   // 如果环境变量中有 API Key，不需要配置
-  if (
-    process.env.MINIMAX_API_KEY ||
-    process.env.GLM_API_KEY ||
-    process.env.OPENAI_API_KEY ||
-    process.env.ANTHROPIC_API_KEY
-  ) {
+  if (process.env.MINIMAX_API_KEY) {
     return false
   }
 
   // 检查配置文件
   const config = readProvidersConfig()
-  const activeProvider = config.providers[config.defaultProvider]
+  const minimaxConfig = config.providers.minimax
   
-  return !activeProvider?.apiKey
+  return !minimaxConfig?.apiKey
 }

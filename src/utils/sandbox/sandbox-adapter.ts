@@ -25,7 +25,7 @@ import { readFile } from 'fs/promises'
 import { memoize } from 'lodash-es'
 import { join, resolve, sep } from 'path'
 import {
-  getAdditionalDirectoriesForClaudeMd,
+  getAdditionalDirectoriesForGongMd,
   getCwdState,
   getOriginalCwd,
 } from '../../bootstrap/state.js'
@@ -240,18 +240,18 @@ export function convertToSandboxRuntimeConfig(
   const cwd = getCwdState()
   const originalCwd = getOriginalCwd()
   if (cwd !== originalCwd) {
-    denyWrite.push(resolve(cwd, '.claude', 'settings.json'))
-    denyWrite.push(resolve(cwd, '.claude', 'settings.local.json'))
+    denyWrite.push(resolve(cwd, '.gong', 'settings.json'))
+    denyWrite.push(resolve(cwd, '.gong', 'settings.local.json'))
   }
 
-  // Block writes to .claude/skills in both original and current working directories.
-  // The sandbox-runtime's getDangerousDirectories() protects .claude/commands and
-  // .claude/agents but not .claude/skills. Skills have the same privilege level
+  // Block writes to .gong/skills in both original and current working directories.
+  // The sandbox-runtime's getDangerousDirectories() protects .gong/commands and
+  // .gong/agents but not .gong/skills. Skills have the same privilege level
   // (auto-discovered, auto-loaded, full Claude capabilities) so they need the
   // same OS-level sandbox protection.
-  denyWrite.push(resolve(originalCwd, '.claude', 'skills'))
+  denyWrite.push(resolve(originalCwd, '.gong', 'skills'))
   if (cwd !== originalCwd) {
-    denyWrite.push(resolve(cwd, '.claude', 'skills'))
+    denyWrite.push(resolve(cwd, '.gong', 'skills'))
   }
 
   // SECURITY: Git's is_git_directory() treats cwd as a bare repo if it has
@@ -294,7 +294,7 @@ export function convertToSandboxRuntimeConfig(
   // Two sources: persisted in settings, and session-only in bootstrap state.
   const additionalDirs = new Set([
     ...(settings.permissions?.additionalDirectories || []),
-    ...getAdditionalDirectoriesForClaudeMd(),
+    ...getAdditionalDirectoriesForGongMd(),
   ])
   allowWrite.push(...additionalDirs)
 

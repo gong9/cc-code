@@ -510,17 +510,18 @@ export function Spinner() {
   const settings = useSettings();
   const reducedMotion = settings.prefersReducedMotion ?? false;
   const [ref, time] = useAnimationFrame(reducedMotion ? null : 120);
+  const CAT_WIDTH = 8; // (=^ω^=) 是 8 个字符宽
   if (reducedMotion) {
     let t0;
     if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-      t0 = <Text color="text">●</Text>;
+      t0 = <Text color="text">(=^ω^=)</Text>;
       $[0] = t0;
     } else {
       t0 = $[0];
     }
     let t1;
     if ($[1] !== ref) {
-      t1 = <Box ref={ref} flexWrap="wrap" height={1} width={2}>{t0}</Box>;
+      t1 = <Box ref={ref} flexWrap="wrap" height={1} width={CAT_WIDTH}>{t0}</Box>;
       $[1] = ref;
       $[2] = t1;
     } else {
@@ -540,7 +541,7 @@ export function Spinner() {
   }
   let t2;
   if ($[5] !== ref || $[6] !== t1) {
-    t2 = <Box ref={ref} flexWrap="wrap" height={1} width={2}>{t1}</Box>;
+    t2 = <Box ref={ref} flexWrap="wrap" height={1} width={CAT_WIDTH}>{t1}</Box>;
     $[5] = ref;
     $[6] = t1;
     $[7] = t2;

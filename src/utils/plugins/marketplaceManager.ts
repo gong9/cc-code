@@ -8,7 +8,7 @@
  * - Track and update marketplace configurations
  *
  * File structure managed by this module:
- * ~/.claude/
+ * ~/.gong/
  *   └── plugins/
  *       ├── known_marketplaces.json    # Configuration of all known marketplaces
  *       └── marketplaces/              # Cache directory for marketplace data
@@ -214,7 +214,7 @@ export function saveMarketplaceToSettings(
 /**
  * Load known marketplaces configuration from disk
  *
- * Reads the configuration file at ~/.claude/plugins/known_marketplaces.json
+ * Reads the configuration file at ~/.gong/plugins/known_marketplaces.json
  * which contains a mapping of marketplace names to their sources and metadata.
  *
  * Example configuration file content:
@@ -222,12 +222,12 @@ export function saveMarketplaceToSettings(
  * {
  *   "official-marketplace": {
  *     "source": { "source": "url", "url": "https://example.com/marketplace.json" },
- *     "installLocation": "/Users/me/.claude/plugins/marketplaces/official-marketplace.json",
+ *     "installLocation": "/Users/me/.gong/plugins/marketplaces/official-marketplace.json",
  *     "lastUpdated": "2024-01-15T10:30:00.000Z"
  *   },
  *   "company-plugins": {
  *     "source": { "source": "github", "repo": "mycompany/plugins" },
- *     "installLocation": "/Users/me/.claude/plugins/marketplaces/company-plugins",
+ *     "installLocation": "/Users/me/.gong/plugins/marketplaces/company-plugins",
  *     "lastUpdated": "2024-01-14T15:45:00.000Z"
  *   }
  * }
@@ -293,7 +293,7 @@ export async function loadKnownMarketplacesConfigSafe(): Promise<KnownMarketplac
 /**
  * Save known marketplaces configuration to disk
  *
- * Writes the configuration to ~/.claude/plugins/known_marketplaces.json,
+ * Writes the configuration to ~/.gong/plugins/known_marketplaces.json,
  * creating the directory structure if it doesn't exist.
  *
  * @param config - The marketplace configuration to save
@@ -1392,7 +1392,7 @@ async function parseFileWithSchema<T>(
  * to match the marketplace's actual name from the manifest.
  *
  * Cache structure:
- * ~/.claude/plugins/marketplaces/
+ * ~/.gong/plugins/marketplaces/
  *   ├── official-marketplace.json     # From URL source
  *   ├── github-marketplace/          # From GitHub/Git source
  *   │   └── .claude-plugin/
@@ -1773,7 +1773,7 @@ async function loadAndCacheMarketplace(
  * Add a marketplace source to the known marketplaces
  *
  * The marketplace is fetched, validated, and cached locally.
- * The configuration is saved to ~/.claude/plugins/known_marketplaces.json.
+ * The configuration is saved to ~/.gong/plugins/known_marketplaces.json.
  *
  * @param source - MarketplaceSource object representing the marketplace source.
  *                 Callers should parse user input into MarketplaceSource format

@@ -47,7 +47,7 @@ import type {
   UserMessage,
 } from '../types/message.js'
 import { toolToAPISchema } from './api.js'
-import { filterInjectedMemoryFiles, getMemoryFiles } from './claudemd.js'
+import { filterInjectedMemoryFiles, getMemoryFiles } from './gongmd.js'
 import { getContextWindowForModel } from './context.js'
 import { getCwd } from './cwd.js'
 import { logForDebugging } from './debug.js'
@@ -319,25 +319,25 @@ async function countSystemTokens(
 
 async function countMemoryFileTokens(): Promise<{
   memoryFileDetails: MemoryFile[]
-  claudeMdTokens: number
+  gongMdTokens: number
 }> {
-  // Simple mode disables CLAUDE.md loading, so don't report tokens for them
+  // Simple mode disables GONG.md loading, so don't report tokens for them
   if (isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE)) {
-    return { memoryFileDetails: [], claudeMdTokens: 0 }
+    return { memoryFileDetails: [], gongMdTokens: 0 }
   }
 
   const memoryFilesData = filterInjectedMemoryFiles(await getMemoryFiles())
   const memoryFileDetails: MemoryFile[] = []
-  let claudeMdTokens = 0
+  let gongMdTokens = 0
 
   if (memoryFilesData.length < 1) {
     return {
       memoryFileDetails: [],
-      claudeMdTokens: 0,
+      gongMdTokens: 0,
     }
   }
 
-  const claudeMdTokenCounts = await Promise.all(
+  const gongMdTokenCounts = await Promise.all(
     memoryFilesData.map(async file => {
       const tokens = await countTokensWithFallback(
         [{ role: 'user', content: file.content }],
@@ -348,8 +348,8 @@ async function countMemoryFileTokens(): Promise<{
     }),
   )
 
-  for (const { file, tokens } of claudeMdTokenCounts) {
-    claudeMdTokens += tokens
+  for (const { file, tokens } of gongMdTokenCounts) {
+    gongMdTokens += tokens
     memoryFileDetails.push({
       path: file.path,
       type: file.type,
@@ -357,7 +357,7 @@ async function countMemoryFileTokens(): Promise<{
     })
   }
 
-  return { claudeMdTokens, memoryFileDetails }
+  return { gongMdTokens, memoryFileDetails }
 }
 
 async function countBuiltInToolTokens(
@@ -952,7 +952,7 @@ export async function analyzeContextUsage(
   // Critical operations that should not fail due to skills
   const [
     { systemPromptTokens, systemPromptSections },
-    { claudeMdTokens, memoryFileDetails },
+    { gongMdTokens, memoryFileDetails },
     {
       builtInToolTokens,
       deferredBuiltinDetails,
@@ -1073,10 +1073,10 @@ export async function analyzeContextUsage(
   }
 
   // Memory files after custom agents
-  if (claudeMdTokens > 0) {
+  if (gongMdTokens > 0) {
     cats.push({
       name: 'Memory files',
-      tokens: claudeMdTokens,
+      tokens: gongMdTokens,
       color: 'claude',
     })
   }
