@@ -11,6 +11,6 @@ export async function call(onDone: LocalJSXCommandOnDone, context: LocalJSXComma
   }
   return <Login startingMessage={'Starting new login following /extra-usage. Exit with Ctrl-C to use existing account.'} onDone={success => {
     context.onChangeAPIKey();
-    onDone(success ? 'Login successful' : 'Login interrupted');
+    onDone(success ? '登录成功' : '登录已取消');
   }} />;
 }

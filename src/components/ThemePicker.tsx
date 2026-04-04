@@ -139,7 +139,7 @@ export function ThemePicker(t0) {
   const themeOptions = t10;
   let t11;
   if ($[8] !== showIntroText) {
-    t11 = showIntroText ? <Text>Let's get started.</Text> : <Text bold={true} color="permission">Theme</Text>;
+    t11 = showIntroText ? <Text>开始使用吧。</Text> : <Text bold={true} color="permission">主题</Text>;
     $[8] = showIntroText;
     $[9] = t11;
   } else {

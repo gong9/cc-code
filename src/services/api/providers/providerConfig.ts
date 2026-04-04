@@ -220,3 +220,26 @@ export function initializeProviderConfig(): boolean {
   
   return false
 }
+
+/**
+ * 清除所有 Provider 的 API Key
+ */
+export function clearAllApiKeys(): void {
+  const config = readProvidersConfig()
+  
+  // 清除所有 provider 的 API Key
+  for (const providerName of Object.keys(config.providers)) {
+    if (config.providers[providerName]) {
+      config.providers[providerName].apiKey = undefined
+    }
+  }
+  
+  // 保存配置
+  saveProvidersConfig(config)
+  
+  // 清除环境变量中的 API Key
+  delete process.env.MINIMAX_API_KEY
+  delete process.env.GLM_API_KEY
+  delete process.env.OPENAI_API_KEY
+  delete process.env.ANTHROPIC_API_KEY
+}

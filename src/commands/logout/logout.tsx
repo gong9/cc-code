@@ -1,79 +1,29 @@
 import * as React from 'react';
-import { clearTrustedDeviceTokenCache } from '../../bridge/trustedDevice.js';
 import { Text } from '../../ink.js';
-import { refreshGrowthBookAfterAuthChange } from '../../services/analytics/growthbook.js';
-import { getGroveNoticeConfig, getGroveSettings } from '../../services/api/grove.js';
-import { clearPolicyLimitsCache } from '../../services/policyLimits/index.js';
-// flushTelemetry is loaded lazily to avoid pulling in ~1.1MB of OpenTelemetry at startup
-import { clearRemoteManagedSettingsCache } from '../../services/remoteManagedSettings/index.js';
-import { getClaudeAIOAuthTokens, removeApiKey } from '../../utils/auth.js';
-import { clearBetasCaches } from '../../utils/betas.js';
-import { saveGlobalConfig } from '../../utils/config.js';
 import { gracefulShutdownSync } from '../../utils/gracefulShutdown.js';
-import { getSecureStorage } from '../../utils/secureStorage/index.js';
-import { clearToolSchemaCache } from '../../utils/toolSchemaCache.js';
-import { resetUserCache } from '../../utils/user.js';
+import { clearAllApiKeys } from '../../services/api/providers/providerConfig.js';
+
+/**
+ * 清除认证相关的缓存
+ * 保留此函数以兼容其他模块的调用
+ */
+export async function clearAuthRelatedCaches(): Promise<void> {
+  // 我们使用 API Key 方式，不需要清除 OAuth 缓存
+  // 但保留函数签名以兼容现有调用
+}
+
+/**
+ * 清除 API Key 配置
+ */
 export async function performLogout({
   clearOnboarding = false
-}): Promise<void> {
-  // Flush telemetry BEFORE clearing credentials to prevent org data leakage
-  const {
-    flushTelemetry
-  } = await import('../../utils/telemetry/instrumentation.js');
-  await flushTelemetry();
-  await removeApiKey();
-
-  // Wipe all secure storage data on logout
-  const secureStorage = getSecureStorage();
-  secureStorage.delete();
-  await clearAuthRelatedCaches();
-  saveGlobalConfig(current => {
-    const updated = {
-      ...current
-    };
-    if (clearOnboarding) {
-      updated.hasCompletedOnboarding = false;
-      updated.subscriptionNoticeCount = 0;
-      updated.hasAvailableSubscription = false;
-      if (updated.customApiKeyResponses?.approved) {
-        updated.customApiKeyResponses = {
-          ...updated.customApiKeyResponses,
-          approved: []
-        };
-      }
-    }
-    updated.oauthAccount = undefined;
-    return updated;
-  });
+}: { clearOnboarding?: boolean } = {}): Promise<void> {
+  clearAllApiKeys();
 }
 
-// clearing anything memoized that must be invalidated when user/session/auth changes
-export async function clearAuthRelatedCaches(): Promise<void> {
-  // Clear the OAuth token cache
-  getClaudeAIOAuthTokens.cache?.clear?.();
-  clearTrustedDeviceTokenCache();
-  clearBetasCaches();
-  clearToolSchemaCache();
-
-  // Clear user data cache BEFORE GrowthBook refresh so it picks up fresh credentials
-  resetUserCache();
-  refreshGrowthBookAfterAuthChange();
-
-  // Clear Grove config cache
-  getGroveNoticeConfig.cache?.clear?.();
-  getGroveSettings.cache?.clear?.();
-
-  // Clear remotely managed settings cache
-  await clearRemoteManagedSettingsCache();
-
-  // Clear policy limits cache
-  await clearPolicyLimitsCache();
-}
 export async function call(): Promise<React.ReactNode> {
-  await performLogout({
-    clearOnboarding: true
-  });
-  const message = <Text>Successfully logged out from your Anthropic account.</Text>;
+  await performLogout({ clearOnboarding: true });
+  const message = <Text color="green">✓ 已成功退出登录，API Key 已清除。</Text>;
   setTimeout(() => {
     gracefulShutdownSync(0, 'logout');
   }, 200);

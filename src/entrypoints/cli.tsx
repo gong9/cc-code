@@ -80,7 +80,7 @@ if (process.env.MODEL_PROVIDER === 'minimax') {
 const feature = (_name: string) => false;
 if (typeof globalThis.MACRO === "undefined") {
     (globalThis as any).MACRO = {
-        VERSION: "0.1.5",
+        VERSION: "0.1.6",
         BUILD_TIME: new Date().toISOString(),
         FEEDBACK_CHANNEL: "",
         ISSUES_EXPLAINER: "",

@@ -173,13 +173,13 @@ export async function authLogin({
       logEvent('tengu_oauth_success', {
         loginWithClaudeAi: shouldUseClaudeAIAuth(tokens.scopes),
       })
-      process.stdout.write('Login successful.\n')
+      process.stdout.write('登录成功。\n')
       process.exit(0)
     } catch (err) {
       logError(err)
       const sslHint = getSSLErrorHint(err)
       process.stderr.write(
-        `Login failed: ${errorMessage(err)}\n${sslHint ? sslHint + '\n' : ''}`,
+        `登录失败: ${errorMessage(err)}\n${sslHint ? sslHint + '\n' : ''}`,
       )
       process.exit(1)
     }
@@ -194,8 +194,8 @@ export async function authLogin({
 
     const result = await oauthService.startOAuthFlow(
       async url => {
-        process.stdout.write('Opening browser to sign in…\n')
-        process.stdout.write(`If the browser didn't open, visit: ${url}\n`)
+        process.stdout.write('正在打开浏览器登录…\n')
+        process.stdout.write(`如果浏览器没有打开，请访问: ${url}\n`)
       },
       {
         loginWithClaudeAi,
@@ -287,7 +287,7 @@ export async function authStatus(opts: {
     }
     if (!loggedIn) {
       process.stdout.write(
-        'Not logged in. Run claude auth login to authenticate.\n',
+        '未登录。请运行 gong-code 并输入 API Key 来登录。\n',
       )
     }
   } else {
@@ -322,9 +322,9 @@ export async function authLogout(): Promise<void> {
   try {
     await performLogout({ clearOnboarding: false })
   } catch {
-    process.stderr.write('Failed to log out.\n')
+    process.stderr.write('退出登录失败。\n')
     process.exit(1)
   }
-  process.stdout.write('Successfully logged out from your Anthropic account.\n')
+  process.stdout.write('✓ 已成功退出登录，API Key 已清除。\n')
   process.exit(0)
 }

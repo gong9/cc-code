@@ -4120,7 +4120,7 @@ export function REPL({
   useEffect(() => {
     const handleSuspend = () => {
       // Print suspension instructions
-      process.stdout.write(`\nGong Code has been suspended. Run \`fg\` to bring Gong Code back.\nNote: ctrl + z now suspends Gong Code, ctrl + _ undoes input.\n`);
+      process.stdout.write(`\nGong Code 已暂停。运行 \`fg\` 恢复 Gong Code。\n注意: Ctrl+Z 暂停程序，Ctrl+_ 撤销输入。\n`);
     };
     const handleResume = () => {
       // Force complete component tree replacement instead of terminal clear

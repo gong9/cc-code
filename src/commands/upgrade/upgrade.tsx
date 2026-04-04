@@ -27,7 +27,7 @@ export async function call(onDone: LocalJSXCommandOnDone, context: LocalJSXComma
     await openBrowser(url);
     return <Login startingMessage={'Starting new login following /upgrade. Exit with Ctrl-C to use existing account.'} onDone={success => {
       context.onChangeAPIKey();
-      onDone(success ? 'Login successful' : 'Login interrupted');
+      onDone(success ? '登录成功' : '登录已取消');
     }} />;
   } catch (error) {
     logError(error as Error);
