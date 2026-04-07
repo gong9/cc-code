@@ -38,6 +38,11 @@ const DEFAULT_CONFIG: ProvidersConfig = {
       provider: 'openai',
       model: 'gpt-4o',
     },
+    aihubmix: {
+      provider: 'aihubmix',
+      model: 'gpt-4o-free',
+      baseUrl: 'https://aihubmix.com/v1',
+    },
   },
 }
 
@@ -45,6 +50,7 @@ export const PROVIDER_OPTIONS = [
   { value: 'minimax', label: 'MiniMax (推荐)', description: 'MiniMax M2.7 大模型' },
   { value: 'qwen', label: '阿里千问 (Qwen)', description: 'Qwen3.6-Plus 百万上下文' },
   { value: 'glm', label: '智谱 GLM', description: 'GLM-5 旗舰 Agentic 模型' },
+  { value: 'aihubmix', label: 'AIHubMix (聚合)', description: 'GPT/Claude/Gemini 多模型' },
 ] as const
 
 function getConfigDir(): string {
@@ -128,6 +134,7 @@ const DEFAULT_MODELS: Record<string, string> = {
   qwen: 'qwen3.6-plus',
   glm: 'glm-5',
   openai: 'gpt-4o',
+  aihubmix: 'gpt-4o-free',
 }
 
 /**
@@ -137,11 +144,15 @@ export function setProviderConfig(
   providerName: string,
   apiKey: string,
   model?: string,
+  baseUrl?: string,
 ): void {
   const config = readProvidersConfig()
   
   // 确定模型：优先使用传入的 model，其次是已配置的，最后是默认值
   const finalModel = model ?? config.providers[providerName]?.model ?? DEFAULT_MODELS[providerName]
+  
+  // 确定 baseUrl
+  const finalBaseUrl = baseUrl ?? config.providers[providerName]?.baseUrl
   
   config.defaultProvider = providerName
   config.providers[providerName] = {
@@ -149,6 +160,7 @@ export function setProviderConfig(
     provider: providerName,
     apiKey,
     model: finalModel,
+    ...(finalBaseUrl && { baseUrl: finalBaseUrl }),
   }
   
   saveProvidersConfig(config)
@@ -167,8 +179,16 @@ export function applyProviderToEnv(
   const provider = providerName ?? config.defaultProvider
   const providerConfig = config.providers[provider]
   
-  // 设置 MODEL_PROVIDER
-  process.env.MODEL_PROVIDER = provider
+  // 设置 MODEL_PROVIDER（aihubmix 映射到 openai-compat）
+  process.env.MODEL_PROVIDER = provider === 'aihubmix' ? 'openai-compat' : provider
+  
+  // 保存原始 provider 名称（用于 UI 显示）
+  process.env.GONG_ORIGINAL_PROVIDER = provider
+  
+  // AIHubMix 需要设置 base URL
+  if (provider === 'aihubmix') {
+    process.env.OPENAI_BASE_URL = providerConfig?.baseUrl || 'https://aihubmix.com/v1'
+  }
   
   // 设置 API Key
   const key = apiKey ?? providerConfig?.apiKey
@@ -187,6 +207,10 @@ export function applyProviderToEnv(
         process.env.DASHSCOPE_API_KEY = key
         break
       case 'openai':
+        process.env.OPENAI_API_KEY = key
+        break
+      case 'aihubmix':
+        // AIHubMix 使用 OpenAI 兼容接口
         process.env.OPENAI_API_KEY = key
         break
     }
@@ -208,6 +232,9 @@ export function applyProviderToEnv(
       case 'openai':
         process.env.OPENAI_MODEL = modelName
         break
+      case 'aihubmix':
+        process.env.OPENAI_MODEL = modelName
+        break
     }
   }
 }
@@ -216,7 +243,16 @@ export function applyProviderToEnv(
  * 初始化：从配置文件加载设置并应用到环境变量
  */
 export function initializeProviderConfig(): boolean {
-  // 如果环境变量中已有 API Key，直接使用
+  // 优先从配置文件加载（支持 aihubmix 等需要特殊处理的 provider）
+  const config = readProvidersConfig()
+  const providerConfig = config.providers[config.defaultProvider]
+  
+  if (providerConfig?.apiKey) {
+    applyProviderToEnv(config.defaultProvider, providerConfig.apiKey, providerConfig.model)
+    return true
+  }
+  
+  // 如果配置文件没有，检查环境变量
   if (process.env.MINIMAX_API_KEY) {
     process.env.MODEL_PROVIDER = 'minimax'
     process.env.ANTHROPIC_BASE_URL = 'https://api.minimaxi.com/anthropic'
@@ -231,16 +267,7 @@ export function initializeProviderConfig(): boolean {
     return true
   }
   if (process.env.OPENAI_API_KEY) {
-    process.env.MODEL_PROVIDER = 'openai'
-    return true
-  }
-  
-  // 从配置文件加载
-  const config = readProvidersConfig()
-  const providerConfig = config.providers[config.defaultProvider]
-  
-  if (providerConfig?.apiKey) {
-    applyProviderToEnv(config.defaultProvider, providerConfig.apiKey, providerConfig.model)
+    process.env.MODEL_PROVIDER = 'openai-compat'
     return true
   }
   

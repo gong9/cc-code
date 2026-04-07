@@ -255,6 +255,8 @@ export function getLogoDisplayData(): {
     : displayPath
   // Check if using a non-Anthropic model provider
   const modelProvider = (process.env.MODEL_PROVIDER || 'minimax').toLowerCase()
+  // 检查原始配置的 provider（用于显示 AIHubMix 等）
+  const originalProvider = process.env.GONG_ORIGINAL_PROVIDER?.toLowerCase()
   let billingType: string
   if (modelProvider !== 'anthropic') {
     // Show provider name for non-Anthropic providers
@@ -265,9 +267,13 @@ export function getLogoDisplayData(): {
       case 'glm':
         billingType = 'GLM (Zhipu AI)'
         break
+      case 'qwen':
+        billingType = 'Qwen (Alibaba)'
+        break
       case 'openai':
       case 'openai-compat':
-        billingType = 'OpenAI Compatible'
+        // 如果原始 provider 是 aihubmix，显示 AIHubMix
+        billingType = originalProvider === 'aihubmix' ? 'AIHubMix' : 'OpenAI Compatible'
         break
       default:
         billingType = modelProvider.toUpperCase()

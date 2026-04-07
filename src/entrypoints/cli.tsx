@@ -20,14 +20,17 @@ function loadProviderConfig(): void {
             const defaultProvider = config.defaultProvider || 'minimax';
             const providerConfig = config.providers?.[defaultProvider];
             
-            // Set provider
+            // 保存原始 provider 名称（用于 UI 显示）
+            process.env.GONG_ORIGINAL_PROVIDER = defaultProvider;
+            
+            // Set provider（aihubmix 映射到 openai-compat）
             if (!process.env.MODEL_PROVIDER) {
-                process.env.MODEL_PROVIDER = defaultProvider;
+                process.env.MODEL_PROVIDER = defaultProvider === 'aihubmix' ? 'openai-compat' : defaultProvider;
             }
             
             // Set API key from config if not in env
             if (providerConfig?.apiKey) {
-                const provider = process.env.MODEL_PROVIDER;
+                const provider = defaultProvider;
                 if (provider === 'minimax' && !process.env.MINIMAX_API_KEY) {
                     process.env.MINIMAX_API_KEY = providerConfig.apiKey;
                     process.env.ANTHROPIC_API_KEY = providerConfig.apiKey; // MiniMax 使用 Anthropic SDK
@@ -38,19 +41,23 @@ function loadProviderConfig(): void {
                     process.env.DASHSCOPE_API_KEY = providerConfig.apiKey;
                 } else if (provider === 'openai' && !process.env.OPENAI_API_KEY) {
                     process.env.OPENAI_API_KEY = providerConfig.apiKey;
+                } else if (provider === 'aihubmix' && !process.env.OPENAI_API_KEY) {
+                    // AIHubMix 使用 OpenAI 兼容接口
+                    process.env.OPENAI_API_KEY = providerConfig.apiKey;
+                    process.env.OPENAI_BASE_URL = providerConfig.baseUrl || 'https://aihubmix.com/v1';
                 }
             }
             
             // Set model from config
             if (providerConfig?.model) {
-                const provider = process.env.MODEL_PROVIDER;
+                const provider = defaultProvider;
                 if (provider === 'minimax' && !process.env.MINIMAX_MODEL) {
                     process.env.MINIMAX_MODEL = providerConfig.model;
                 } else if (provider === 'glm' && !process.env.GLM_MODEL) {
                     process.env.GLM_MODEL = providerConfig.model;
                 } else if (provider === 'qwen' && !process.env.QWEN_MODEL) {
                     process.env.QWEN_MODEL = providerConfig.model;
-                } else if (provider === 'openai' && !process.env.OPENAI_MODEL) {
+                } else if ((provider === 'openai' || provider === 'aihubmix') && !process.env.OPENAI_MODEL) {
                     process.env.OPENAI_MODEL = providerConfig.model;
                 }
             }

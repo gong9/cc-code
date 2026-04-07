@@ -122,9 +122,23 @@ export class OpenAICompatAdapter extends BaseAdapter {
     const model = params.model || this.model || 'gpt-4o'
     const url = `${this.baseUrl}/chat/completions`
 
+    // 转换消息格式
+    let messages = this.messagesToOpenAIFormat(params.messages, params.systemPrompt)
+    
+    // 某些模型（如 Claude via OpenAI-compat）不支持 assistant prefill
+    // 如果最后一条消息是空的 assistant 消息，移除它
+    while (messages.length > 0) {
+      const last = messages[messages.length - 1]
+      if (last.role === 'assistant' && (!last.content || last.content.trim() === '') && !last.tool_calls) {
+        messages = messages.slice(0, -1)
+      } else {
+        break
+      }
+    }
+
     const body = {
       model,
-      messages: this.messagesToOpenAIFormat(params.messages, params.systemPrompt),
+      messages,
       max_tokens: params.maxTokens || 4096,
       temperature: params.temperature,
       top_p: params.topP,
