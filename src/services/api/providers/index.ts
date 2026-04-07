@@ -82,6 +82,7 @@ export type {
   OpenAICompatProviderConfig,
   MiniMaxProviderConfig,
   GLMProviderConfig,
+  QwenProviderConfig,
 } from './types.js'
 
 // 导出错误类
@@ -95,6 +96,7 @@ export { AnthropicAdapter } from './AnthropicAdapter.js'
 export { OpenAICompatAdapter } from './OpenAICompatAdapter.js'
 export { MiniMaxAdapter } from './MiniMaxAdapter.js'
 export { GLMAdapter } from './GLMAdapter.js'
+export { QwenAdapter } from './QwenAdapter.js'
 
 // 导出注册中心
 export {

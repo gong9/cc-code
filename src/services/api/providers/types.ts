@@ -267,12 +267,18 @@ export interface GLMProviderConfig extends BaseProviderConfig {
   provider: 'glm'
 }
 
+/** Qwen Provider 配置 */
+export interface QwenProviderConfig extends BaseProviderConfig {
+  provider: 'qwen'
+}
+
 /** 所有 Provider 配置类型 */
 export type ProviderConfig =
   | AnthropicProviderConfig
   | OpenAICompatProviderConfig
   | MiniMaxProviderConfig
   | GLMProviderConfig
+  | QwenProviderConfig
 
 // ============================================================================
 // 错误类型

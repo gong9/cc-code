@@ -185,7 +185,10 @@ export function getDefaultMainLoopModelSetting(): ModelName | ModelAlias {
       case 'minimax':
         return process.env.MINIMAX_MODEL || 'MiniMax-M2.7'
       case 'glm':
-        return process.env.GLM_MODEL || 'glm-4-plus'
+        return process.env.GLM_MODEL || 'glm-5'
+      case 'qwen':
+      case 'dashscope':
+        return process.env.QWEN_MODEL || 'qwen3.6-plus'
       case 'openai':
       case 'openai-compat':
       case 'openai_compat':
@@ -359,7 +362,10 @@ export function renderModelSetting(setting: ModelName | ModelAlias): string {
       case 'minimax':
         return setting || 'MiniMax-M2.7'
       case 'glm':
-        return setting || 'GLM-4-Plus'
+        return setting || 'GLM-5'
+      case 'qwen':
+      case 'dashscope':
+        return setting || 'qwen3.6-plus'
       case 'openai':
       case 'openai-compat':
         return setting || 'GPT-4o'

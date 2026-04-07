@@ -12,7 +12,8 @@
 | `minimax` | **abab6.5s**, abab6.5, abab7-preview | streaming, tool use, **vision** | 自动切换 |
 | `anthropic` | Claude 4, Claude 3.5, Claude 3 | 完整支持 (streaming, tool use, vision, thinking) | |
 | `openai-compat` | GPT-4, GPT-3.5, 及兼容 API | streaming, tool use, vision | |
-| `glm` | GLM-4, GLM-5, GLM-4V | streaming, tool use, vision | |
+| `glm` | **GLM-5**, GLM-5-Turbo, GLM-4.x | streaming, tool use, vision, **thinking** | |
+| `qwen` | **Qwen3.6-Plus**, Qwen-Long, Qwen-VL | streaming, tool use, vision, **100万上下文** | |
 
 > 💡 **MiniMax Vision 支持**: 当检测到图片时，系统会自动从 M2.7 切换到 abab 系列模型（支持 Vision）。
 > 可通过 `MINIMAX_VISION_MODEL` 环境变量指定 Vision 模型（默认：`abab6.5s-chat`）。
@@ -29,9 +30,13 @@
 export MINIMAX_API_KEY=your-api-key
 # export MINIMAX_MODEL=MiniMax-M2.7  # 可选，默认就是 M2.7
 
-# GLM 配置
+# 智谱 GLM 配置 (GLM-5 旗舰模型)
 export GLM_API_KEY=your-api-key
-export GLM_MODEL=glm-4-plus
+export GLM_MODEL=glm-5
+
+# 阿里千问 Qwen 配置 (百炼平台)
+export QWEN_API_KEY=your-api-key       # 或 DASHSCOPE_API_KEY
+export QWEN_MODEL=qwen3.6-plus         # 默认模型
 
 # OpenAI 兼容配置 (如 OneAPI, LiteLLM)
 export OPENAI_BASE_URL=https://your-proxy.com/v1
@@ -184,6 +189,7 @@ providers/
 ├── OpenAICompatAdapter.ts # OpenAI 兼容适配器
 ├── MiniMaxAdapter.ts     # MiniMax 适配器
 ├── GLMAdapter.ts         # GLM 适配器
+├── QwenAdapter.ts        # 阿里千问 Qwen 适配器
 ├── index.ts              # 统一导出
 └── README.md             # 本文档
 ```

@@ -76,7 +76,18 @@ export function getProviderConfigFromEnv(): ProviderConfig {
         provider: 'glm',
         apiKey: process.env.GLM_API_KEY || process.env.ZHIPU_API_KEY,
         baseUrl: process.env.GLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4',
-        model: process.env.GLM_MODEL || 'glm-4-plus',
+        model: process.env.GLM_MODEL || 'glm-5',
+        timeout: parseInt(process.env.API_TIMEOUT_MS || '600000', 10),
+        maxRetries: parseInt(process.env.API_MAX_RETRIES || '2', 10),
+      }
+
+    case 'qwen':
+    case 'dashscope':
+      return {
+        provider: 'qwen',
+        apiKey: process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY,
+        baseUrl: process.env.QWEN_BASE_URL || process.env.DASHSCOPE_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+        model: process.env.QWEN_MODEL || 'qwen3.6-plus',
         timeout: parseInt(process.env.API_TIMEOUT_MS || '600000', 10),
         maxRetries: parseInt(process.env.API_MAX_RETRIES || '2', 10),
       }
@@ -215,6 +226,17 @@ export async function initializeBuiltinAdapters(): Promise<void> {
   registerProviderFactory('glm', (config) => {
     const { GLMAdapter } = require('./GLMAdapter.js') as typeof import('./GLMAdapter.js')
     return new GLMAdapter({
+      apiKey: config?.apiKey,
+      baseUrl: config?.baseUrl,
+      model: config?.model,
+      timeout: config?.timeout,
+      maxRetries: config?.maxRetries,
+    })
+  })
+
+  registerProviderFactory('qwen', (config) => {
+    const { QwenAdapter } = require('./QwenAdapter.js') as typeof import('./QwenAdapter.js')
+    return new QwenAdapter({
       apiKey: config?.apiKey,
       baseUrl: config?.baseUrl,
       model: config?.model,

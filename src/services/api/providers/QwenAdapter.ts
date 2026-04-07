@@ -1,15 +1,14 @@
 /**
- * 智谱 GLM API 适配器
+ * 阿里云百炼千问 (Qwen) API 适配器
  * 
- * 专门为智谱 AI GLM 系列模型优化的适配器，支持：
- * - GLM-5 (旗舰 Agentic 模型，200K 上下文，128K 输出)
- * - GLM-5-Turbo / GLM-4.7 / GLM-4.6 / GLM-4.5
- * - GLM-4V (视觉模型)
+ * 专门为阿里云百炼平台 Qwen 系列模型优化的适配器，支持：
+ * - Qwen3.6-Plus / Qwen3.6 / Qwen3.5 系列
+ * - Qwen-Long (100万 Token 超长上下文)
+ * - Qwen-VL 系列 (视觉模型)
  * - Tool Use (Function Calling)
- * - 思考模式 (Thinking)
- * - Web Search 等插件
+ * - Streaming 流式输出
  * 
- * API 文档: https://docs.bigmodel.cn/
+ * API 文档: https://help.aliyun.com/zh/model-studio/
  */
 
 import { BaseAdapter } from './BaseAdapter.js'
@@ -24,8 +23,8 @@ import type {
 } from './types.js'
 import { ProviderError } from './types.js'
 
-/** GLM API 消息格式 */
-interface GLMMessage {
+/** Qwen API 消息格式 (OpenAI 兼容) */
+interface QwenMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
   content?: string | Array<{ type: string; text?: string; image_url?: { url: string } }>
   tool_calls?: Array<{
@@ -36,28 +35,24 @@ interface GLMMessage {
   tool_call_id?: string
 }
 
-/** GLM API 工具格式 */
-interface GLMTool {
-  type: 'function' | 'web_search' | 'retrieval' | 'code_interpreter'
-  function?: {
+/** Qwen API 工具格式 */
+interface QwenTool {
+  type: 'function'
+  function: {
     name: string
     description: string
     parameters: Record<string, unknown>
   }
-  web_search?: {
-    enable?: boolean
-    search_query?: string
-  }
 }
 
-/** GLM API 响应格式 */
-interface GLMResponse {
+/** Qwen API 响应格式 */
+interface QwenResponse {
   id: string
   created: number
   model: string
   choices: Array<{
     index: number
-    message: GLMMessage
+    message: QwenMessage
     finish_reason: string | null
   }>
   usage: {
@@ -67,14 +62,14 @@ interface GLMResponse {
   }
 }
 
-/** GLM 流式响应块 */
-interface GLMStreamChunk {
+/** Qwen 流式响应块 */
+interface QwenStreamChunk {
   id: string
   created: number
   model: string
   choices: Array<{
     index: number
-    delta: Partial<GLMMessage> & {
+    delta: Partial<QwenMessage> & {
       tool_calls?: Array<{
         index: number
         id?: string
@@ -92,20 +87,20 @@ interface GLMStreamChunk {
 }
 
 /**
- * GLM 适配器
+ * Qwen 适配器
  */
-export class GLMAdapter extends BaseAdapter {
-  readonly name = 'glm'
-  readonly displayName = '智谱 GLM'
+export class QwenAdapter extends BaseAdapter {
+  readonly name = 'qwen'
+  readonly displayName = '阿里千问 (Qwen)'
 
   readonly capabilities: ProviderCapabilities = {
     streaming: true,
     toolUse: true,
-    vision: true, // GLM-4V 支持
-    thinking: true, // GLM-5 支持思考模式
+    vision: true, // Qwen-VL 支持
+    thinking: false,
     systemPrompt: true,
-    maxContextLength: 200_000, // GLM-5: 200K
-    maxOutputTokens: 128_000,  // GLM-5: 128K
+    maxContextLength: 1_000_000, // 100万 Token (Qwen3.6-Plus)
+    maxOutputTokens: 8_192,
   }
 
   constructor(config: {
@@ -116,9 +111,10 @@ export class GLMAdapter extends BaseAdapter {
     maxRetries?: number
   } = {}) {
     super(config)
-    this.baseUrl = config.baseUrl || process.env.GLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4'
-    this.apiKey = config.apiKey || process.env.GLM_API_KEY || process.env.ZHIPU_API_KEY
-    this.model = config.model || process.env.GLM_MODEL || 'glm-5'
+    // 阿里云百炼 DashScope OpenAI 兼容接口
+    this.baseUrl = config.baseUrl || process.env.QWEN_BASE_URL || process.env.DASHSCOPE_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+    this.apiKey = config.apiKey || process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY
+    this.model = config.model || process.env.QWEN_MODEL || 'qwen3.6-plus'
   }
 
   /**
@@ -137,13 +133,13 @@ export class GLMAdapter extends BaseAdapter {
   }
 
   /**
-   * 将统一消息转换为 GLM 格式
+   * 将统一消息转换为 Qwen 格式
    */
-  private toGLMMessages(
+  private toQwenMessages(
     messages: UnifiedMessage[],
     systemPrompt?: string | string[]
-  ): GLMMessage[] {
-    const result: GLMMessage[] = []
+  ): QwenMessage[] {
+    const result: QwenMessage[] = []
 
     // 添加系统提示词
     const sysPrompt = this.systemPromptToString(systemPrompt)
@@ -175,7 +171,7 @@ export class GLMAdapter extends BaseAdapter {
             continue
           }
 
-          // 检查是否包含图片 (GLM-4V)
+          // 检查是否包含图片 (Qwen-VL)
           const hasImage = msg.content.some(c => c.type === 'image')
           if (hasImage) {
             const contentArray: Array<{ type: string; text?: string; image_url?: { url: string } }> = []
@@ -228,9 +224,9 @@ export class GLMAdapter extends BaseAdapter {
   }
 
   /**
-   * 将统一工具转换为 GLM 格式
+   * 将统一工具转换为 Qwen 格式
    */
-  private toGLMTools(tools: UnifiedTool[]): GLMTool[] {
+  private toQwenTools(tools: UnifiedTool[]): QwenTool[] {
     return tools.map(tool => ({
       type: 'function' as const,
       function: {
@@ -245,21 +241,22 @@ export class GLMAdapter extends BaseAdapter {
    * 流式 Chat 请求
    */
   async *chat(params: ChatParams): AsyncGenerator<StreamEvent, void, unknown> {
-    const model = params.model || this.model || 'glm-5'
+    const model = params.model || this.model || 'qwen3.6-plus'
     const url = `${this.baseUrl}/chat/completions`
 
     const body: Record<string, unknown> = {
       model,
-      messages: this.toGLMMessages(params.messages, params.systemPrompt),
-      max_tokens: params.maxTokens || 4096,
+      messages: this.toQwenMessages(params.messages, params.systemPrompt),
+      max_tokens: params.maxTokens || 8192,
       temperature: params.temperature ?? 0.7,
       top_p: params.topP ?? 0.9,
       stream: true,
+      stream_options: { include_usage: true },
     }
 
     // 添加工具
     if (params.tools && params.tools.length > 0) {
-      body.tools = this.toGLMTools(params.tools)
+      body.tools = this.toQwenTools(params.tools)
       body.tool_choice = 'auto'
     }
 
@@ -274,7 +271,7 @@ export class GLMAdapter extends BaseAdapter {
       if (!response.ok) {
         const errorText = await response.text()
         throw new ProviderError(
-          `GLM API error: ${errorText}`,
+          `Qwen API error: ${errorText}`,
           response.status === 401 ? 'authentication_error' :
           response.status === 429 ? 'rate_limit_error' :
           response.status === 400 ? 'invalid_request_error' : 'api_error',
@@ -340,7 +337,7 @@ export class GLMAdapter extends BaseAdapter {
             }
 
             try {
-              const chunk: GLMStreamChunk = JSON.parse(data)
+              const chunk: QwenStreamChunk = JSON.parse(data)
               const choice = chunk.choices[0]
               if (!choice) continue
 
@@ -394,7 +391,7 @@ export class GLMAdapter extends BaseAdapter {
       if (error instanceof ProviderError) {
         throw error
       }
-      throw this.wrapError(error, 'GLM API request failed')
+      throw this.wrapError(error, 'Qwen API request failed')
     }
   }
 
@@ -402,20 +399,20 @@ export class GLMAdapter extends BaseAdapter {
    * 非流式 Chat 请求
    */
   async chatSync(params: ChatParams): Promise<ChatResponse> {
-    const model = params.model || this.model || 'glm-5'
+    const model = params.model || this.model || 'qwen3.6-plus'
     const url = `${this.baseUrl}/chat/completions`
 
     const body: Record<string, unknown> = {
       model,
-      messages: this.toGLMMessages(params.messages, params.systemPrompt),
-      max_tokens: params.maxTokens || 4096,
+      messages: this.toQwenMessages(params.messages, params.systemPrompt),
+      max_tokens: params.maxTokens || 8192,
       temperature: params.temperature ?? 0.7,
       top_p: params.topP ?? 0.9,
       stream: false,
     }
 
     if (params.tools && params.tools.length > 0) {
-      body.tools = this.toGLMTools(params.tools)
+      body.tools = this.toQwenTools(params.tools)
       body.tool_choice = 'auto'
     }
 
@@ -430,7 +427,7 @@ export class GLMAdapter extends BaseAdapter {
       if (!response.ok) {
         const errorText = await response.text()
         throw new ProviderError(
-          `GLM API error: ${errorText}`,
+          `Qwen API error: ${errorText}`,
           response.status === 401 ? 'authentication_error' :
           response.status === 429 ? 'rate_limit_error' :
           response.status === 400 ? 'invalid_request_error' : 'api_error',
@@ -439,7 +436,7 @@ export class GLMAdapter extends BaseAdapter {
         )
       }
 
-      const data: GLMResponse = await response.json()
+      const data: QwenResponse = await response.json()
 
       const choice = data.choices[0]
       if (!choice) {
@@ -504,7 +501,7 @@ export class GLMAdapter extends BaseAdapter {
       if (error instanceof ProviderError) {
         throw error
       }
-      throw this.wrapError(error, 'GLM API request failed')
+      throw this.wrapError(error, 'Qwen API request failed')
     }
   }
 
@@ -521,7 +518,7 @@ export class GLMAdapter extends BaseAdapter {
           'Authorization': `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: 'glm-4-flash',
+          model: 'qwen-turbo',
           messages: [{ role: 'user', content: 'hi' }],
           max_tokens: 1,
         }),
@@ -536,30 +533,32 @@ export class GLMAdapter extends BaseAdapter {
    * 获取可用模型列表
    */
   async listModels(): Promise<string[]> {
-    // 智谱 GLM 已知模型列表
+    // 阿里云百炼 Qwen 已知模型列表
     return [
-      // GLM-5 系列 (最新旗舰)
-      'glm-5',           // 旗舰模型，200K 上下文，Agentic Coding
-      'glm-5-turbo',     // 快速版本
-      // GLM-4.x 系列
-      'glm-4.7',
-      'glm-4.6',
-      'glm-4.5',
-      // GLM-4 系列
-      'glm-4',
-      'glm-4-plus',
-      'glm-4-air',
-      'glm-4-airx',
-      'glm-4-flash',
-      'glm-4-long',
-      // 视觉模型
-      'glm-4v',
-      'glm-4v-plus',
-      // 代码模型
-      'codegeex-4',
-      // 嵌入模型
-      'embedding-2',
-      'embedding-3',
+      // Qwen3.6 系列 (最新)
+      'qwen3.6-plus',
+      'qwen3.6',
+      // Qwen3.5 系列
+      'qwen3.5-plus',
+      'qwen3.5',
+      'qwen3.5-flash',
+      // Qwen 长文本系列
+      'qwen-long',
+      // Qwen-Turbo (快速)
+      'qwen-turbo',
+      'qwen-turbo-latest',
+      // Qwen-Plus
+      'qwen-plus',
+      'qwen-plus-latest',
+      // Qwen-Max
+      'qwen-max',
+      'qwen-max-latest',
+      // Qwen 视觉模型
+      'qwen-vl-plus',
+      'qwen-vl-max',
+      // Qwen 代码模型
+      'qwen-coder-plus',
+      'qwen-coder-turbo',
     ]
   }
 }

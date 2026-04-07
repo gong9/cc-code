@@ -1049,11 +1049,16 @@ async function* queryModelWithProvider(
   // Get provider instance
   let provider
   if (providerName && providerName !== 'default') {
-    provider = getProvider(providerName, {
-      provider: 'minimax' as const,
-      apiKey: process.env.MINIMAX_API_KEY || process.env.ANTHROPIC_API_KEY,
+    // 根据 providerName 获取对应的配置
+    const providerConfig = {
+      provider: providerName as 'minimax' | 'glm' | 'qwen' | 'openai-compat',
+      apiKey: providerName === 'glm' ? process.env.GLM_API_KEY :
+              providerName === 'qwen' ? (process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY) :
+              providerName === 'openai' ? process.env.OPENAI_API_KEY :
+              (process.env.MINIMAX_API_KEY || process.env.ANTHROPIC_API_KEY),
       model: options.model,
-    })
+    }
+    provider = getProvider(providerName, providerConfig)
   } else {
     provider = getActiveProvider()
   }
@@ -1064,7 +1069,26 @@ async function* queryModelWithProvider(
   const systemPromptText = systemPrompt.join('\n\n')
   
   try {
-    const model = options.model || process.env.MINIMAX_MODEL || process.env.GLM_MODEL || process.env.OPENAI_MODEL || 'MiniMax-M2.7'
+    // 根据当前 provider 获取正确的默认模型
+    const currentProvider = (process.env.MODEL_PROVIDER || 'minimax').toLowerCase()
+    let defaultModel = 'MiniMax-M2.7'
+    switch (currentProvider) {
+      case 'glm':
+      case 'zhipu':
+        defaultModel = process.env.GLM_MODEL || 'glm-5'
+        break
+      case 'qwen':
+      case 'dashscope':
+        defaultModel = process.env.QWEN_MODEL || 'qwen3.6-plus'
+        break
+      case 'openai':
+      case 'openai-compat':
+        defaultModel = process.env.OPENAI_MODEL || 'gpt-4o'
+        break
+      default:
+        defaultModel = process.env.MINIMAX_MODEL || 'MiniMax-M2.7'
+    }
+    const model = options.model || defaultModel
     
     const chatParams = {
       messages: unifiedMessages,
@@ -1281,8 +1305,19 @@ async function* queryModel(
   
   const processedMessages = messages
   
-  // For truly non-Anthropic-compatible providers (future use)
-  if (modelProvider !== 'anthropic' && modelProvider !== 'minimax' && modelProvider !== 'glm') {
+  // GLM 和 Qwen 使用各自的 Adapter，不走 Anthropic SDK
+  if (modelProvider === 'glm' || modelProvider === 'zhipu') {
+    yield* queryModelWithProvider(messages, systemPrompt, tools, signal, options, 'glm')
+    return
+  }
+  
+  if (modelProvider === 'qwen' || modelProvider === 'dashscope') {
+    yield* queryModelWithProvider(messages, systemPrompt, tools, signal, options, 'qwen')
+    return
+  }
+  
+  // For other non-Anthropic-compatible providers
+  if (modelProvider !== 'anthropic' && modelProvider !== 'minimax') {
     yield* queryModelWithProvider(messages, systemPrompt, tools, signal, options, modelProvider)
     return
   }

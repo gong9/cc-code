@@ -28,7 +28,11 @@ const DEFAULT_CONFIG: ProvidersConfig = {
     },
     glm: {
       provider: 'glm',
-      model: 'glm-4-plus',
+      model: 'glm-5',
+    },
+    qwen: {
+      provider: 'qwen',
+      model: 'qwen3.6-plus',
     },
     openai: {
       provider: 'openai',
@@ -39,8 +43,8 @@ const DEFAULT_CONFIG: ProvidersConfig = {
 
 export const PROVIDER_OPTIONS = [
   { value: 'minimax', label: 'MiniMax (推荐)', description: 'MiniMax M2.7 大模型' },
-  { value: 'glm', label: '智谱 GLM', description: 'GLM-4 系列大模型' },
-  { value: 'openai', label: 'OpenAI 兼容', description: 'OpenAI API 或兼容接口' },
+  { value: 'qwen', label: '阿里千问 (Qwen)', description: 'Qwen3.6-Plus 百万上下文' },
+  { value: 'glm', label: '智谱 GLM', description: 'GLM-5 旗舰 Agentic 模型' },
 ] as const
 
 function getConfigDir(): string {
@@ -100,7 +104,7 @@ export function saveProvidersConfig(config: ProvidersConfig): void {
  */
 export function hasValidApiKey(): boolean {
   // 首先检查环境变量
-  if (process.env.MINIMAX_API_KEY || process.env.GLM_API_KEY || process.env.OPENAI_API_KEY) {
+  if (process.env.MINIMAX_API_KEY || process.env.GLM_API_KEY || process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY || process.env.OPENAI_API_KEY) {
     return true
   }
   
@@ -118,6 +122,14 @@ export function getActiveProviderConfig(): ProviderSettings | null {
   return config.providers[config.defaultProvider] ?? null
 }
 
+// Provider 默认模型
+const DEFAULT_MODELS: Record<string, string> = {
+  minimax: 'MiniMax-M2.7',
+  qwen: 'qwen3.6-plus',
+  glm: 'glm-5',
+  openai: 'gpt-4o',
+}
+
 /**
  * 设置 Provider 配置并应用到环境变量
  */
@@ -128,16 +140,19 @@ export function setProviderConfig(
 ): void {
   const config = readProvidersConfig()
   
+  // 确定模型：优先使用传入的 model，其次是已配置的，最后是默认值
+  const finalModel = model ?? config.providers[providerName]?.model ?? DEFAULT_MODELS[providerName]
+  
   config.defaultProvider = providerName
   config.providers[providerName] = {
     ...config.providers[providerName],
     provider: providerName,
     apiKey,
-    model: model ?? config.providers[providerName]?.model,
+    model: finalModel,
   }
   
   saveProvidersConfig(config)
-  applyProviderToEnv(providerName, apiKey, model)
+  applyProviderToEnv(providerName, apiKey, finalModel)
 }
 
 /**
@@ -167,6 +182,10 @@ export function applyProviderToEnv(
       case 'glm':
         process.env.GLM_API_KEY = key
         break
+      case 'qwen':
+        process.env.QWEN_API_KEY = key
+        process.env.DASHSCOPE_API_KEY = key
+        break
       case 'openai':
         process.env.OPENAI_API_KEY = key
         break
@@ -182,6 +201,9 @@ export function applyProviderToEnv(
         break
       case 'glm':
         process.env.GLM_MODEL = modelName
+        break
+      case 'qwen':
+        process.env.QWEN_MODEL = modelName
         break
       case 'openai':
         process.env.OPENAI_MODEL = modelName
@@ -202,6 +224,10 @@ export function initializeProviderConfig(): boolean {
   }
   if (process.env.GLM_API_KEY) {
     process.env.MODEL_PROVIDER = 'glm'
+    return true
+  }
+  if (process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY) {
+    process.env.MODEL_PROVIDER = 'qwen'
     return true
   }
   if (process.env.OPENAI_API_KEY) {
@@ -240,6 +266,8 @@ export function clearAllApiKeys(): void {
   // 清除环境变量中的 API Key
   delete process.env.MINIMAX_API_KEY
   delete process.env.GLM_API_KEY
+  delete process.env.QWEN_API_KEY
+  delete process.env.DASHSCOPE_API_KEY
   delete process.env.OPENAI_API_KEY
   delete process.env.ANTHROPIC_API_KEY
 }

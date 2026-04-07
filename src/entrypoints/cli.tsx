@@ -33,6 +33,9 @@ function loadProviderConfig(): void {
                     process.env.ANTHROPIC_API_KEY = providerConfig.apiKey; // MiniMax 使用 Anthropic SDK
                 } else if (provider === 'glm' && !process.env.GLM_API_KEY) {
                     process.env.GLM_API_KEY = providerConfig.apiKey;
+                } else if (provider === 'qwen' && !process.env.QWEN_API_KEY) {
+                    process.env.QWEN_API_KEY = providerConfig.apiKey;
+                    process.env.DASHSCOPE_API_KEY = providerConfig.apiKey;
                 } else if (provider === 'openai' && !process.env.OPENAI_API_KEY) {
                     process.env.OPENAI_API_KEY = providerConfig.apiKey;
                 }
@@ -45,6 +48,8 @@ function loadProviderConfig(): void {
                     process.env.MINIMAX_MODEL = providerConfig.model;
                 } else if (provider === 'glm' && !process.env.GLM_MODEL) {
                     process.env.GLM_MODEL = providerConfig.model;
+                } else if (provider === 'qwen' && !process.env.QWEN_MODEL) {
+                    process.env.QWEN_MODEL = providerConfig.model;
                 } else if (provider === 'openai' && !process.env.OPENAI_MODEL) {
                     process.env.OPENAI_MODEL = providerConfig.model;
                 }

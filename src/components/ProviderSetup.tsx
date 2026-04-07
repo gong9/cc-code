@@ -9,6 +9,7 @@ import { Select, type OptionWithDescription } from './CustomSelect/select.js'
 import {
   setProviderConfig,
   readProvidersConfig,
+  PROVIDER_OPTIONS,
 } from '../services/api/providers/providerConfig.js'
 import { Clawd } from './LogoV2/Clawd.js'
 import { useKeybinding } from '../keybindings/useKeybinding.js'
@@ -19,12 +20,13 @@ interface Props {
   onDone: () => void
 }
 
-const MINIMAX_API_URL = 'https://platform.minimax.chat/user-center/basic-information/interface-key'
-
-// 目前只支持 MiniMax
-const PROVIDER_OPTIONS = [
-  { value: 'minimax', label: 'MiniMax (推荐)', description: 'MiniMax M2.7 大模型' },
-] as const
+// 各 Provider 的 API Key 获取地址
+const API_KEY_URLS: Record<string, string> = {
+  minimax: 'https://platform.minimax.chat/user-center/basic-information/interface-key',
+  glm: 'https://open.bigmodel.cn/usercenter/apikeys',
+  qwen: 'https://bailian.console.aliyun.com/',
+  openai: 'https://platform.openai.com/api-keys',
+}
 
 export function ProviderSetup({ onDone }: Props): React.ReactNode {
   const [step, setStep] = useState<Step>('select-provider')
@@ -107,11 +109,13 @@ export function ProviderSetup({ onDone }: Props): React.ReactNode {
 
   if (step === 'input-key') {
     const maskedKey = apiKey.length > 0 ? '*'.repeat(Math.min(apiKey.length, 20)) + (apiKey.length > 20 ? '...' : '') : ''
+    const providerLabel = PROVIDER_OPTIONS.find(p => p.value === selectedProvider)?.label || selectedProvider
+    const apiKeyUrl = API_KEY_URLS[selectedProvider] || ''
     
     return (
       <Box flexDirection="column" paddingX={1} gap={1}>
-        <Text bold color="cyan">🔑 输入 MiniMax API Key</Text>
-        <Text dimColor>获取地址: {MINIMAX_API_URL}</Text>
+        <Text bold color="cyan">🔑 输入 {providerLabel} API Key</Text>
+        {apiKeyUrl && <Text dimColor>获取地址: {apiKeyUrl}</Text>}
         <Box marginTop={1}>
           <Text>API Key: </Text>
           <Text color="green">{maskedKey}</Text>
@@ -130,14 +134,14 @@ export function ProviderSetup({ onDone }: Props): React.ReactNode {
  * 检查是否需要显示配置界面
  */
 export function needsProviderSetup(): boolean {
-  // 如果环境变量中有 API Key，不需要配置
-  if (process.env.MINIMAX_API_KEY) {
+  // 如果环境变量中有任意 API Key，不需要配置
+  if (process.env.MINIMAX_API_KEY || process.env.GLM_API_KEY || process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY || process.env.OPENAI_API_KEY) {
     return false
   }
 
-  // 检查配置文件
+  // 检查配置文件中默认 Provider 是否有 API Key
   const config = readProvidersConfig()
-  const minimaxConfig = config.providers.minimax
+  const defaultProviderConfig = config.providers[config.defaultProvider]
   
-  return !minimaxConfig?.apiKey
+  return !defaultProviderConfig?.apiKey
 }
