@@ -1104,6 +1104,8 @@ async function* queryModelWithProvider(
     let inputTokens = 0
     let outputTokens = 0
     let eventCount = 0
+    // 跟踪 tool_use blocks
+    const toolUseBlocks: Array<{ type: 'tool_use'; id: string; name: string; input: unknown }> = []
     traceMiniMaxVision('queryModelWithProvider.start', {
       providerName,
       model,
@@ -1153,12 +1155,15 @@ async function* queryModelWithProvider(
           if (event.contentBlock) {
             const cb = event.contentBlock
             if (cb.type === 'tool_use') {
-              anthropicEvent.content_block = {
-                type: 'tool_use',
+              const toolUseBlock = {
+                type: 'tool_use' as const,
                 id: cb.id || '',
                 name: cb.name || '',
                 input: cb.input || {},
               }
+              anthropicEvent.content_block = toolUseBlock
+              // 保存 tool_use block 以便在最终消息中包含
+              toolUseBlocks.push(toolUseBlock)
             } else {
               anthropicEvent.content_block = {
                 type: cb.type || 'text',
@@ -1214,7 +1219,17 @@ async function* queryModelWithProvider(
       model,
       eventCount,
       fullContentLength: fullContent.length,
+      toolUseCount: toolUseBlocks.length,
     })
+    
+    // 构建最终的 content 数组
+    const finalContent: Array<{ type: string; text?: string; id?: string; name?: string; input?: unknown }> = []
+    if (fullContent) {
+      finalContent.push({ type: 'text', text: fullContent })
+    }
+    for (const toolUse of toolUseBlocks) {
+      finalContent.push(toolUse)
+    }
     
     // Yield final assistant message
     const assistantMessage: AssistantMessage = {
@@ -1224,9 +1239,9 @@ async function* queryModelWithProvider(
         id: messageId,
         type: 'message',
         role: 'assistant',
-        content: [{ type: 'text', text: fullContent }],
+        content: finalContent.length > 0 ? finalContent : [{ type: 'text', text: '' }],
         model: model,
-        stop_reason: 'end_turn',
+        stop_reason: toolUseBlocks.length > 0 ? 'tool_use' : 'end_turn',
         stop_sequence: null,
         usage: {
           input_tokens: inputTokens,

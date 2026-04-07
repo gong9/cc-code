@@ -84,8 +84,25 @@ if (process.env.MODEL_PROVIDER === 'minimax') {
 // Runtime polyfill for bun:bundle (build-time macros)
 const feature = (_name: string) => false;
 if (typeof globalThis.MACRO === "undefined") {
+    // 动态读取 package.json 版本号
+    let pkgVersion = "0.1.9";
+    try {
+        // 开发模式：src/entrypoints/cli.tsx → 需要往上两级
+        // 构建后：dist/cli.js → 需要往上一级
+        const baseDir = import.meta.dirname || __dirname;
+        let pkgPath = join(baseDir, '..', '..', 'package.json'); // src/entrypoints/ → 根目录
+        if (!existsSync(pkgPath)) {
+            pkgPath = join(baseDir, '..', 'package.json'); // dist/ → 根目录
+        }
+        if (existsSync(pkgPath)) {
+            const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
+            pkgVersion = pkg.version || pkgVersion;
+        }
+    } catch {
+        // 使用默认版本
+    }
     (globalThis as any).MACRO = {
-        VERSION: "0.1.6",
+        VERSION: pkgVersion,
         BUILD_TIME: new Date().toISOString(),
         FEEDBACK_CHANNEL: "",
         ISSUES_EXPLAINER: "",

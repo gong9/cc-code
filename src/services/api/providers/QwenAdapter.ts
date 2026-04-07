@@ -11,6 +11,7 @@
  * API 文档: https://help.aliyun.com/zh/model-studio/
  */
 
+import { logForDebugging } from 'src/utils/debug.js'
 import { BaseAdapter } from './BaseAdapter.js'
 import type {
   ChatParams,
@@ -260,6 +261,12 @@ export class QwenAdapter extends BaseAdapter {
       body.tool_choice = 'auto'
     }
 
+    // Debug: 打印请求信息
+    logForDebugging(`[QwenAdapter] Request: url=${url} model=${model} tools=${params.tools?.length || 0} messages=${params.messages?.length || 0}`)
+    if (body.tools) {
+      logForDebugging(`[QwenAdapter] Tools: ${JSON.stringify(body.tools)}`, { level: 'verbose' })
+    }
+
     try {
       const response = await fetch(url, {
         method: 'POST',
@@ -303,6 +310,28 @@ export class QwenAdapter extends BaseAdapter {
       let contentIndex = 0
       let currentContent = ''
       const toolCalls: Map<number, { id: string; name: string; arguments: string }> = new Map()
+      let messageStopped = false
+
+      // 统一的停止事件发射函数
+      const emitStopEvents = async function* (): AsyncGenerator<StreamEvent, void, unknown> {
+        if (currentContent) {
+          yield { type: 'content_block_stop', index: contentIndex }
+        }
+        for (const [idx, tc] of toolCalls) {
+          yield {
+            type: 'content_block_start',
+            index: idx + 1,
+            contentBlock: {
+              type: 'tool_use',
+              id: tc.id,
+              name: tc.name,
+              input: JSON.parse(tc.arguments || '{}'),
+            },
+          }
+          yield { type: 'content_block_stop', index: idx + 1 }
+        }
+        yield { type: 'message_stop' }
+      }
 
       while (true) {
         const { done, value } = await reader.read()
@@ -316,23 +345,8 @@ export class QwenAdapter extends BaseAdapter {
           if (line.startsWith('data: ')) {
             const data = line.slice(6).trim()
             if (data === '[DONE]') {
-              if (currentContent) {
-                yield { type: 'content_block_stop', index: contentIndex }
-              }
-              for (const [idx, tc] of toolCalls) {
-                yield {
-                  type: 'content_block_start',
-                  index: idx + 1,
-                  contentBlock: {
-                    type: 'tool_use',
-                    id: tc.id,
-                    name: tc.name,
-                    input: JSON.parse(tc.arguments || '{}'),
-                  },
-                }
-                yield { type: 'content_block_stop', index: idx + 1 }
-              }
-              yield { type: 'message_stop' }
+              yield* emitStopEvents()
+              messageStopped = true
               return
             }
 
@@ -342,6 +356,9 @@ export class QwenAdapter extends BaseAdapter {
               if (!choice) continue
 
               const delta = choice.delta
+
+              // Debug: 打印原始 chunk
+              logForDebugging(`[QwenAdapter] Chunk: ${JSON.stringify(chunk)}`, { level: 'verbose' })
 
               // 处理文本内容
               if (delta.content && typeof delta.content === 'string') {
@@ -362,6 +379,7 @@ export class QwenAdapter extends BaseAdapter {
 
               // 处理工具调用
               if (delta.tool_calls) {
+                logForDebugging(`[QwenAdapter] Tool calls delta: ${JSON.stringify(delta.tool_calls)}`)
                 for (const tc of delta.tool_calls) {
                   const existing = toolCalls.get(tc.index) || { id: '', name: '', arguments: '' }
                   if (tc.id) existing.id = tc.id
@@ -369,6 +387,11 @@ export class QwenAdapter extends BaseAdapter {
                   if (tc.function?.arguments) existing.arguments += tc.function.arguments
                   toolCalls.set(tc.index, existing)
                 }
+              }
+
+              // 处理 finish_reason
+              if (choice.finish_reason) {
+                logForDebugging(`[QwenAdapter] Finish reason: ${choice.finish_reason} toolCalls: ${toolCalls.size}`)
               }
 
               // 处理 usage
@@ -386,6 +409,12 @@ export class QwenAdapter extends BaseAdapter {
             }
           }
         }
+      }
+
+      // 处理流结束但没收到 [DONE] 的情况
+      if (!messageStopped) {
+        logForDebugging('[QwenAdapter] EOF without [DONE], emitting stop events', { level: 'warn' })
+        yield* emitStopEvents()
       }
     } catch (error) {
       if (error instanceof ProviderError) {
