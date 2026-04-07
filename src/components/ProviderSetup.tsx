@@ -34,8 +34,6 @@ export function ProviderSetup({ onDone }: Props): React.ReactNode {
   const [apiKey, setApiKey] = useState<string>('')
   const [error, setError] = useState<string>('')
 
-  const config = readProvidersConfig()
-
   // 处理 Ctrl+C 退出
   useKeybinding('app:interrupt', () => {
     process.exit(0)
@@ -99,7 +97,6 @@ export function ProviderSetup({ onDone }: Props): React.ReactNode {
         </Box>
         <Select
           options={providerOptions}
-          defaultValue={config.defaultProvider}
           onChange={handleProviderSelect}
         />
         <Text dimColor>回车确认</Text>

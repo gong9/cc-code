@@ -49,6 +49,15 @@ import { extractConnectionErrorDetails } from './errorUtils.js'
 
 const abortError = () => new APIUserAbortError()
 
+/**
+ * 判断当前是否使用第三方 Provider（MiniMax、Qwen、GLM 等）
+ * 第三方 Provider 的 401 错误不应该重试，因为 API Key 错误重试没有意义
+ */
+function isThirdPartyProvider(): boolean {
+  const provider = (process.env.MODEL_PROVIDER || '').toLowerCase()
+  return ['minimax', 'qwen', 'glm', 'dashscope', 'zhipu', 'openai', 'openai-compat'].includes(provider)
+}
+
 const DEFAULT_MAX_RETRIES = 10
 const FLOOR_OUTPUT_TOKENS = 3000
 const MAX_529_RETRIES = 3
@@ -770,7 +779,13 @@ function shouldRetry(error: APIError): boolean {
 
   // Clear API key cache on 401 and allow retry.
   // OAuth token handling is done in the main retry loop via handleOAuth401Error.
+  // NOTE: 第三方 Provider（MiniMax、Qwen、GLM 等）的 401 错误不重试，
+  // 因为 API Key 错误重试没有意义，应该直接提示用户检查配置。
   if (error.status === 401) {
+    if (isThirdPartyProvider()) {
+      logForDebugging('[withRetry] Third-party provider 401 error, not retrying')
+      return false
+    }
     clearApiKeyHelperCache()
     return true
   }
