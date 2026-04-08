@@ -1673,20 +1673,30 @@ export function REPL({
     setInputValue,
     setToolJSX
   });
-  const showSpinner = (!toolJSX || toolJSX.showSpinner === true) && toolUseConfirmQueue.length === 0 && promptQueue.length === 0 && (
-  // Show spinner during input processing, API call, while teammates are running,
-  // or while pending task notifications are queued (prevents spinner bounce between consecutive notifications)
-  isLoading || userInputOnProcessing || hasRunningTeammates ||
-  // Keep spinner visible while task notifications are queued for processing.
-  // Without this, the spinner briefly disappears between consecutive notifications
-  // (e.g., multiple background agents completing in rapid succession) because
-  // isLoading goes false momentarily between processing each one.
-  getCommandQueueLength() > 0) &&
-  // Hide spinner when waiting for leader to approve permission request
-  !pendingWorkerRequest && !onlySleepToolActive && (
-  // Hide spinner when streaming text is visible (the text IS the feedback),
-  // but keep it when isBriefOnly suppresses the streaming text display
-  !visibleStreamingText || isBriefOnly);
+  const hasVisibleStreamingFeedback = Boolean(visibleStreamingText) && !isBriefOnly;
+  const hasPendingFeedbackWork = (
+    // Show feedback during input processing, API calls, teammate work, or while
+    // queued task notifications are still being processed.
+    isLoading ||
+    userInputOnProcessing ||
+    hasRunningTeammates ||
+    getCommandQueueLength() > 0
+  );
+  const canShowSpinnerFeedback = (!toolJSX || toolJSX.showSpinner === true) &&
+    toolUseConfirmQueue.length === 0 &&
+    promptQueue.length === 0 &&
+    hasPendingFeedbackWork &&
+    !pendingWorkerRequest &&
+    !onlySleepToolActive;
+  const spinnerFeedbackState = canShowSpinnerFeedback
+    ? hasVisibleStreamingFeedback
+      ? 'streaming'
+      : 'processing'
+    : null;
+  const showSpinner = spinnerFeedbackState !== null;
+  const effectiveSpinnerMessage = spinnerFeedbackState === 'streaming'
+    ? spinnerMessage ?? '输出中'
+    : spinnerMessage;
 
   // Check if any permission or ask question prompt is currently visible
   // This is used to prevent the survey from opening while prompts are active
@@ -4581,7 +4591,7 @@ export function REPL({
               {("external" as string) === 'ant' && <TungstenLiveMonitor />}
               {feature('WEB_BROWSER_TOOL') ? WebBrowserPanelModule && <WebBrowserPanelModule.WebBrowserPanel /> : null}
               <Box flexGrow={1} />
-              {showSpinner && <SpinnerWithVerb mode={streamMode} spinnerTip={spinnerTip} responseLengthRef={responseLengthRef} apiMetricsRef={apiMetricsRef} overrideMessage={spinnerMessage} spinnerSuffix={stopHookSpinnerSuffix} verbose={verbose} loadingStartTimeRef={loadingStartTimeRef} totalPausedMsRef={totalPausedMsRef} pauseStartTimeRef={pauseStartTimeRef} overrideColor={spinnerColor} overrideShimmerColor={spinnerShimmerColor} hasActiveTools={inProgressToolUseIDs.size > 0} leaderIsIdle={!isLoading} />}
+              {showSpinner && <SpinnerWithVerb mode={streamMode} spinnerTip={spinnerTip} responseLengthRef={responseLengthRef} apiMetricsRef={apiMetricsRef} overrideMessage={effectiveSpinnerMessage} spinnerSuffix={stopHookSpinnerSuffix} verbose={verbose} loadingStartTimeRef={loadingStartTimeRef} totalPausedMsRef={totalPausedMsRef} pauseStartTimeRef={pauseStartTimeRef} overrideColor={spinnerColor} overrideShimmerColor={spinnerShimmerColor} hasActiveTools={inProgressToolUseIDs.size > 0} leaderIsIdle={!isLoading} feedbackState={spinnerFeedbackState ?? undefined} />}
               {!showSpinner && !isLoading && !userInputOnProcessing && !hasRunningTeammates && isBriefOnly && !viewedAgentTask && <BriefIdleStatus />}
               {isFullscreenEnvEnabled() && <PromptInputQueuedCommands />}
             </>} bottom={<Box flexDirection={feature('BUDDY') && companionNarrow ? 'column' : 'row'} width="100%" alignItems={feature('BUDDY') && companionNarrow ? undefined : 'flex-end'}>

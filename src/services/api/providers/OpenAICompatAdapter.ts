@@ -56,6 +56,11 @@ interface OpenAIStreamChunk {
   object: string
   created: number
   model: string
+  usage?: {
+    prompt_tokens: number
+    completion_tokens: number
+    total_tokens: number
+  }
   choices: Array<{
     index: number
     delta: Partial<OpenAIMessage> & {
@@ -115,6 +120,30 @@ export class OpenAICompatAdapter extends BaseAdapter {
     return headers
   }
 
+  private buildError(
+    errorText: string,
+    status: number,
+  ): ProviderError {
+    return new ProviderError(
+      `OpenAI API error: ${errorText}`,
+      status === 401 ? 'authentication_error' :
+      status === 429 ? 'rate_limit_error' :
+      status === 400 ? 'invalid_request_error' : 'api_error',
+      status,
+      this.name,
+    )
+  }
+
+  private shouldRetryWithoutUsage(
+    status: number,
+    errorText: string,
+  ): boolean {
+    return status === 400 &&
+      /include_usage|stream_options|unknown field|extra inputs are not permitted|unrecognized/i.test(
+        errorText,
+      )
+  }
+
   /**
    * 流式 Chat 请求
    */
@@ -136,7 +165,7 @@ export class OpenAICompatAdapter extends BaseAdapter {
       }
     }
 
-    const body = {
+    const buildBody = (includeUsage: boolean) => ({
       model,
       messages,
       max_tokens: params.maxTokens || 4096,
@@ -144,30 +173,42 @@ export class OpenAICompatAdapter extends BaseAdapter {
       top_p: params.topP,
       stop: params.stopSequences,
       stream: true,
+      ...(includeUsage && {
+        stream_options: { include_usage: true },
+      }),
       ...(params.tools && params.tools.length > 0 && {
         tools: this.toolsToOpenAIFormat(params.tools),
         tool_choice: 'auto',
       }),
-    }
+    })
 
     try {
-      const response = await fetch(url, {
+      let includeUsage = true
+      let response = await fetch(url, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify(body),
+        body: JSON.stringify(buildBody(includeUsage)),
         signal: params.signal,
       })
 
       if (!response.ok) {
         const errorText = await response.text()
-        throw new ProviderError(
-          `OpenAI API error: ${errorText}`,
-          response.status === 401 ? 'authentication_error' :
-          response.status === 429 ? 'rate_limit_error' :
-          response.status === 400 ? 'invalid_request_error' : 'api_error',
-          response.status,
-          this.name
-        )
+        if (this.shouldRetryWithoutUsage(response.status, errorText)) {
+          includeUsage = false
+          response = await fetch(url, {
+            method: 'POST',
+            headers: this.getHeaders(),
+            body: JSON.stringify(buildBody(includeUsage)),
+            signal: params.signal,
+          })
+        } else {
+          throw this.buildError(errorText, response.status)
+        }
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw this.buildError(errorText, response.status)
       }
 
       if (!response.body) {
@@ -186,6 +227,8 @@ export class OpenAICompatAdapter extends BaseAdapter {
       let contentIndex = 0
       let currentContent = ''
       const toolCalls: Map<number, { id: string; name: string; arguments: string }> = new Map()
+      let latestUsage = { inputTokens: 0, outputTokens: 0 }
+      let usageEmitted = false
 
       while (true) {
         const { done, value } = await reader.read()
@@ -217,12 +260,25 @@ export class OpenAICompatAdapter extends BaseAdapter {
                 }
                 yield { type: 'content_block_stop', index: idx + 1 }
               }
+              if (!usageEmitted && (latestUsage.inputTokens > 0 || latestUsage.outputTokens > 0)) {
+                yield {
+                  type: 'message_delta',
+                  usage: latestUsage,
+                }
+                usageEmitted = true
+              }
               yield { type: 'message_stop' }
               return
             }
 
             try {
               const chunk: OpenAIStreamChunk = JSON.parse(data)
+              if (chunk.usage) {
+                latestUsage = {
+                  inputTokens: chunk.usage.prompt_tokens ?? latestUsage.inputTokens,
+                  outputTokens: chunk.usage.completion_tokens ?? latestUsage.outputTokens,
+                }
+              }
               const choice = chunk.choices[0]
               if (!choice) continue
 
@@ -261,13 +317,21 @@ export class OpenAICompatAdapter extends BaseAdapter {
               if (choice.finish_reason) {
                 yield {
                   type: 'message_delta',
-                  usage: { inputTokens: 0, outputTokens: 0 },
+                  usage: latestUsage,
                 }
+                usageEmitted = true
               }
             } catch {
               // 忽略解析错误
             }
           }
+        }
+      }
+
+      if (!usageEmitted && (latestUsage.inputTokens > 0 || latestUsage.outputTokens > 0)) {
+        yield {
+          type: 'message_delta',
+          usage: latestUsage,
         }
       }
     } catch (error) {

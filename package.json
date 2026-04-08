@@ -1,6 +1,6 @@
 {
   "name": "gong-code",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "AI coding assistant in the terminal — supports MiniMax, GLM, OpenAI compatible APIs",
   "type": "module",
   "author": "gongzhen",

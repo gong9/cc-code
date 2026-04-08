@@ -1,14 +1,16 @@
 import type { RGBColor as RGBColorString } from '../../ink/styles.js'
 import type { RGBColor as RGBColorType } from './types.js'
 
-// 可爱小猫咪 loading 动画帧
+// 可爱小猫咪 loading 动画帧。重复中性表情来减少跳变，让切换更自然。
 const CAT_FRAMES = [
   '(=^ω^=)',   // 开心猫
-  '(=^-^=)',   // 眯眼猫  
-  '(=^ω^=)',   // 开心猫
-  '(=^o^=)',   // 惊讶猫
+  '(=^ω^=)',   // 停顿一帧，避免切得太急
+  '(=^-^=)',   // 眯眼猫
+  '(=^ω^=)',   // 回到主表情
   '(=^.^=)',   // 微笑猫
+  '(=^ω^=)',   // 回到主表情
   '(=^_^=)',   // 闭眼猫
+  '(=^ω^=)',   // 回到主表情
 ]
 
 export function getDefaultCharacters(): string[] {
