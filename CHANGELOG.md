@@ -2,6 +2,29 @@
 
 本文档记录项目的主要版本变更。
 
+## [0.1.14] - 2026-04-12
+
+### 新增
++ 🤖 **GLM 模型自动选择**：根据消息内容自动选择最合适的模型
+  - 普通文本 → `glm-5.1`（最新旗舰，Coding 对齐 Claude Opus 4.6）
+  - 包含图片 → `glm-5v-turbo`（多模态模型）
++ 📋 更新 GLM 模型列表，新增 GLM-5.1、GLM-5V-Turbo、GLM-4.7-Flash 等最新模型
++ 🔧 新增 `parseToolCallArguments()` 统一方法处理工具调用参数解析
+
+### 修复
++ 🐛 **修复非 Claude 模型工具调用失败的问题**
+  - 根本原因：`convertToUnifiedTools` 未将 Zod schema 转换为 JSON Schema
+  - 修复后：正确调用 `zodToJsonSchema()` 转换，工具定义包含完整的 `properties` 和 `required`
++ 🔧 增强 JSON 解析健壮性：新增 `tryFixToolCallJson()` 处理尾部逗号、缺失括号等问题
++ 🔧 新增工具参数别名修复：支持 `cmd → command`、`path → file_path` 等常见别名转换
++ 🐛 修复 `OpenAICompatAdapter.ts` 代码缩进异常
+
+### 优化
++ ♻️ 简化 GLMAdapter 的 `required` 字段逻辑，移除不准确的推断代码
++ ♻️ 统一 4 个适配器（GLM/Qwen/MiniMax/OpenAI）的 JSON 解析逻辑到 BaseAdapter
++ 📝 添加别名转换日志记录，便于分析模型行为
++ 🎯 改进视觉模型检测：使用明确的模型列表匹配，避免误判
+
 ## [0.1.13] - 2026-04-08
 
 ### 修复

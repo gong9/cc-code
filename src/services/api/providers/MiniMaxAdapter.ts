@@ -384,19 +384,21 @@ export class MiniMaxAdapter extends BaseAdapter {
       const toolCalls: Map<number, { id: string; name: string; arguments: string }> = new Map()
       let messageStopped = false
 
+      const self = this
       const emitStopEvents = async function* (): AsyncGenerator<StreamEvent, void, unknown> {
         if (currentContent) {
           yield { type: 'content_block_stop', index: contentIndex }
         }
         for (const [idx, tc] of toolCalls) {
+          const parsedInput = self.parseToolCallArguments(tc.arguments, tc.name, 'MiniMax')
           yield {
             type: 'content_block_start',
             index: idx + 1,
             contentBlock: {
               type: 'tool_use',
-              id: tc.id,
-              name: tc.name,
-              input: JSON.parse(tc.arguments || '{}'),
+              id: tc.id || `tool_call_${idx}`,
+              name: tc.name || 'unknown_tool',
+              input: parsedInput,
             },
           }
           yield { type: 'content_block_stop', index: idx + 1 }
@@ -624,11 +626,16 @@ export class MiniMaxAdapter extends BaseAdapter {
 
       if (message.tool_calls) {
         for (const toolCall of message.tool_calls) {
+          const parsedInput = this.parseToolCallArguments(
+            toolCall.function.arguments,
+            toolCall.function.name,
+            'MiniMax'
+          )
           content.push({
             type: 'tool_use',
-            id: toolCall.id,
-            name: toolCall.function.name,
-            input: JSON.parse(toolCall.function.arguments || '{}'),
+            id: toolCall.id || `tool_call_${toolCall.function.name}`,
+            name: toolCall.function.name || 'unknown_tool',
+            input: parsedInput,
           })
         }
       }

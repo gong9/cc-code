@@ -265,11 +265,23 @@ export abstract class BaseAdapter implements ModelProvider {
     if (message.tool_calls) {
       for (const toolCall of message.tool_calls) {
         if (toolCall.type === 'function') {
+          // 安全解析 JSON
+          let parsedInput: Record<string, unknown> = {}
+          const args = toolCall.function.arguments
+          if (args) {
+            try {
+              parsedInput = JSON.parse(args)
+            } catch {
+              console.warn(`[BaseAdapter] Failed to parse tool call arguments for ${toolCall.function.name}`)
+              // 尝试基本修复
+              parsedInput = this.tryFixToolCallJson(args) ?? { _raw: args, _parseError: true }
+            }
+          }
           content.push({
             type: 'tool_use',
-            id: toolCall.id,
-            name: toolCall.function.name,
-            input: JSON.parse(toolCall.function.arguments || '{}'),
+            id: toolCall.id || `tool_call_${toolCall.function.name}`,
+            name: toolCall.function.name || 'unknown_tool',
+            input: parsedInput,
           })
         }
       }
@@ -298,6 +310,110 @@ export abstract class BaseAdapter implements ModelProvider {
         outputTokens: response.usage?.completion_tokens ?? 0,
       },
     }
+  }
+
+  // ============================================================================
+  // JSON 解析与修复
+  // ============================================================================
+
+  /**
+   * 安全解析工具调用参数
+   * 
+   * 统一处理 JSON 解析和错误恢复，供所有适配器使用
+   * 
+   * @param args - 原始 JSON 字符串
+   * @param toolName - 工具名称（用于日志）
+   * @param adapterName - 适配器名称（用于日志）
+   * @returns 解析后的对象
+   */
+  protected parseToolCallArguments(
+    args: string | undefined,
+    toolName: string,
+    adapterName: string = this.name
+  ): Record<string, unknown> {
+    if (!args) {
+      return {}
+    }
+    
+    try {
+      return JSON.parse(args)
+    } catch {
+      // 尝试修复常见的 JSON 问题
+      const fixed = this.tryFixToolCallJson(args)
+      if (fixed !== null) {
+        return fixed
+      }
+      console.warn(`[${adapterName}] Failed to parse tool call arguments for ${toolName}`)
+      // 返回带错误标记的对象，让上层处理
+      return { _raw: args, _parseError: true }
+    }
+  }
+
+  /**
+   * 尝试修复常见的 JSON 解析问题
+   */
+  protected tryFixToolCallJson(jsonStr: string): Record<string, unknown> | null {
+    let working = jsonStr.trim()
+
+    // 1. 尝试移除多余的转义
+    try {
+      const unescaped = working.replace(/\\\\/g, '\\').replace(/\\"/g, '"')
+      if (unescaped !== working) {
+        try {
+          return JSON.parse(unescaped)
+        } catch {
+          working = unescaped // 使用转义后的版本继续
+        }
+      }
+    } catch {
+      // 继续
+    }
+
+    // 2. 先移除尾部逗号（在添加括号之前）
+    if (working.endsWith(',')) {
+      const withoutComma = working.slice(0, -1)
+      try {
+        return JSON.parse(withoutComma)
+      } catch {
+        working = withoutComma // 继续使用去掉逗号的版本
+      }
+    }
+
+    // 3. 尝试添加缺失的闭合括号
+    const openBraces = (working.match(/{/g) || []).length
+    const closeBraces = (working.match(/}/g) || []).length
+    if (openBraces > closeBraces) {
+      working += '}'.repeat(openBraces - closeBraces)
+      try {
+        return JSON.parse(working)
+      } catch {
+        // 继续
+      }
+    }
+
+    // 4. 尝试添加缺失的方括号
+    const openBrackets = (working.match(/\[/g) || []).length
+    const closeBrackets = (working.match(/]/g) || []).length
+    if (openBrackets > closeBrackets) {
+      working += ']'.repeat(openBrackets - closeBrackets)
+      try {
+        return JSON.parse(working)
+      } catch {
+        // 继续
+      }
+    }
+
+    // 5. 再次检查尾部逗号（添加括号后可能产生新的尾部逗号问题）
+    if (working.includes(',}') || working.includes(',]')) {
+      working = working.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']')
+      try {
+        return JSON.parse(working)
+      } catch {
+        // 继续
+      }
+    }
+
+    return null
   }
 
   // ============================================================================

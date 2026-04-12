@@ -3361,13 +3361,13 @@ async function run(): Promise<CommanderCommand> {
       } = await import('./commands/clear/caches.js');
       clearSessionCaches();
       let messages: MessageType[] | null = null;
-      let processedResume: ProcessedResume | undefined = undefined;
+      let processedResume: ProcessedResume | undefined ;
       let maybeSessionId = validateUuid(options.resume);
-      let searchTerm: string | undefined = undefined;
+      let searchTerm: string | undefined ;
       // Store full LogOption when found by custom title (for cross-worktree resume)
       let matchedLog: LogOption | null = null;
       // PR filter for --from-pr flag
-      let filterByPr: boolean | number | string | undefined = undefined;
+      let filterByPr: boolean | number | string | undefined ;
 
       // Handle --from-pr flag
       if (options.fromPr) {

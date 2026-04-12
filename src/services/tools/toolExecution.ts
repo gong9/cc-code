@@ -130,6 +130,137 @@ import {
   runPreToolUseHooks,
 } from './toolHooks.js'
 
+/**
+ * 尝试修复工具输入参数
+ * 
+ * 非 Claude 模型经常返回不符合 schema 的参数，常见问题：
+ * 1. 使用了别名（如 cmd 而不是 command）
+ * 2. 参数为空或格式错误
+ * 3. 类型不对（字符串应该是数字等）
+ */
+function tryFixToolInput(
+  toolName: string,
+  input: { [key: string]: unknown }
+): { [key: string]: unknown } {
+  // 调试日志：打印原始输入
+  logForDebugging(`[tryFixToolInput] Tool: ${toolName}, Input: ${JSON.stringify(input)}`)
+  
+  // 如果输入有解析错误标记，尝试从原始字符串提取
+  if (input._parseError === true && typeof input._raw === 'string') {
+    logForDebugging(`[tryFixToolInput] Attempting to recover from parse error for ${toolName}`)
+    // 尝试一些常见的修复
+    const raw = input._raw as string
+    // 移除 _parseError 和 _raw，保留其他可能有用的字段
+    const { _parseError, _raw, ...rest } = input
+    if (Object.keys(rest).length > 0) {
+      return rest
+    }
+    // 无法恢复，返回空对象让验证失败
+    return {}
+  }
+
+  const fixed = { ...input }
+  const aliasesApplied: string[] = []
+
+  // Bash 工具的别名修复
+  if (toolName === 'Bash' || toolName === 'bash') {
+    // command 的常见别名
+    if (!fixed.command && fixed.cmd) {
+      fixed.command = fixed.cmd
+      delete fixed.cmd
+      aliasesApplied.push('cmd → command')
+    }
+    if (!fixed.command && fixed.script) {
+      fixed.command = fixed.script
+      delete fixed.script
+      aliasesApplied.push('script → command')
+    }
+    if (!fixed.command && fixed.shell) {
+      fixed.command = fixed.shell
+      delete fixed.shell
+      aliasesApplied.push('shell → command')
+    }
+    // 如果 command 是对象而不是字符串，尝试提取
+    if (fixed.command && typeof fixed.command === 'object') {
+      const cmd = fixed.command as Record<string, unknown>
+      if (typeof cmd.command === 'string') {
+        fixed.command = cmd.command
+        aliasesApplied.push('command.command → command')
+      } else if (typeof cmd.cmd === 'string') {
+        fixed.command = cmd.cmd
+        aliasesApplied.push('command.cmd → command')
+      }
+    }
+  }
+
+  // FileRead 工具的别名修复
+  if (toolName === 'Read' || toolName === 'FileRead') {
+    if (!fixed.file_path && fixed.path) {
+      fixed.file_path = fixed.path
+      delete fixed.path
+      aliasesApplied.push('path → file_path')
+    }
+    if (!fixed.file_path && fixed.filePath) {
+      fixed.file_path = fixed.filePath
+      delete fixed.filePath
+      aliasesApplied.push('filePath → file_path')
+    }
+    if (!fixed.file_path && fixed.file) {
+      fixed.file_path = fixed.file
+      delete fixed.file
+      aliasesApplied.push('file → file_path')
+    }
+  }
+
+  // FileWrite 工具的别名修复
+  if (toolName === 'Write' || toolName === 'FileWrite') {
+    if (!fixed.file_path && fixed.path) {
+      fixed.file_path = fixed.path
+      delete fixed.path
+      aliasesApplied.push('path → file_path')
+    }
+    if (!fixed.content && fixed.contents) {
+      fixed.content = fixed.contents
+      delete fixed.contents
+      aliasesApplied.push('contents → content')
+    }
+    if (!fixed.content && fixed.text) {
+      fixed.content = fixed.text
+      delete fixed.text
+      aliasesApplied.push('text → content')
+    }
+  }
+
+  // Grep 工具的别名修复
+  if (toolName === 'Grep' || toolName === 'grep') {
+    if (!fixed.pattern && fixed.query) {
+      fixed.pattern = fixed.query
+      delete fixed.query
+      aliasesApplied.push('query → pattern')
+    }
+    if (!fixed.pattern && fixed.search) {
+      fixed.pattern = fixed.search
+      delete fixed.search
+      aliasesApplied.push('search → pattern')
+    }
+  }
+  
+  // 记录别名转换（用于分析模型行为）
+  if (aliasesApplied.length > 0) {
+    logForDebugging(`[tryFixToolInput] ${toolName}: Applied aliases: ${aliasesApplied.join(', ')}`)
+  }
+
+  // Glob 工具的别名修复
+  if (toolName === 'Glob' || toolName === 'glob') {
+    if (!fixed.pattern && fixed.glob) {
+      fixed.pattern = fixed.glob
+      delete fixed.glob
+    }
+  }
+
+  return fixed
+}
+
 /** Minimum total hook duration (ms) to show inline timing summary */
 export const HOOK_TIMING_DISPLAY_THRESHOLD_MS = 500
 /** Log a debug warning when hooks/permission-decision block for this long. Matches
@@ -611,8 +742,11 @@ async function checkPermissionsAndCallTool(
     progress: ToolProgress<ToolProgressData> | ProgressMessage<HookProgress>,
   ) => void,
 ): Promise<MessageUpdateLazy[]> {
+  // 修复常见的输入问题（非 Claude 模型经常返回不符合 schema 的参数）
+  const fixedInput = tryFixToolInput(tool.name, input)
+  
   // Validate input types with zod (surprisingly, the model is not great at generating valid input)
-  const parsedInput = tool.inputSchema.safeParse(input)
+  const parsedInput = tool.inputSchema.safeParse(fixedInput)
   if (!parsedInput.success) {
     let errorContent = formatZodValidationError(tool.name, parsedInput.error)
 

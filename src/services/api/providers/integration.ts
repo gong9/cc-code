@@ -11,6 +11,7 @@
 import type { Message, AssistantMessage, StreamEvent as InternalStreamEvent } from '../../../types/message.js'
 import type { SystemPrompt } from '../../../utils/systemPromptType.js'
 import type { Tool, Tools } from '../../../Tool.js'
+import { zodToJsonSchema } from '../../../utils/zodToJsonSchema.js'
 import {
   initializeProviderFromEnv,
   getActiveProvider,
@@ -134,17 +135,33 @@ export function convertToUnifiedMessages(messages: Message[]): UnifiedMessage[] 
 
 /**
  * 将内部工具格式转换为统一格式
+ * 
+ * 注意：本地工具（如 BashTool）只有 inputSchema（Zod schema），
+ * 需要通过 zodToJsonSchema 转换为 JSON Schema 格式。
+ * MCP 工具通常已经有 inputJSONSchema。
  */
 export function convertToUnifiedTools(tools: Tools): UnifiedTool[] {
-  return tools.map(tool => ({
-    name: tool.name,
-    description: tool.description || '',
-    inputSchema: {
-      type: 'object' as const,
-      properties: (tool.inputJSONSchema as { properties?: Record<string, unknown> })?.properties || {},
-      required: (tool.inputJSONSchema as { required?: string[] })?.required || [],
-    },
-  }))
+  return tools.map(tool => {
+    // 优先使用已有的 JSON Schema，否则从 Zod schema 转换
+    const jsonSchema = tool.inputJSONSchema
+      ? tool.inputJSONSchema
+      : tool.inputSchema
+        ? zodToJsonSchema(tool.inputSchema)
+        : {}
+
+    const properties = (jsonSchema as { properties?: Record<string, unknown> })?.properties || {}
+    const required = (jsonSchema as { required?: string[] })?.required || []
+    
+    return {
+      name: tool.name,
+      description: tool.description || '',
+      inputSchema: {
+        type: 'object' as const,
+        properties,
+        required,
+      },
+    }
+  })
 }
 
 /**

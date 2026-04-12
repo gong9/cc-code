@@ -248,14 +248,15 @@ export class OpenAICompatAdapter extends BaseAdapter {
               }
               // 发送工具调用
               for (const [idx, tc] of toolCalls) {
+                const parsedInput = this.parseToolCallArguments(tc.arguments, tc.name, 'OpenAI')
                 yield {
                   type: 'content_block_start',
                   index: idx + 1,
                   contentBlock: {
                     type: 'tool_use',
-                    id: tc.id,
-                    name: tc.name,
-                    input: JSON.parse(tc.arguments || '{}'),
+                    id: tc.id || `tool_call_${idx}`,
+                    name: tc.name || 'unknown_tool',
+                    input: parsedInput,
                   },
                 }
                 yield { type: 'content_block_stop', index: idx + 1 }

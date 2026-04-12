@@ -118,7 +118,61 @@ export class GLMAdapter extends BaseAdapter {
     super(config)
     this.baseUrl = config.baseUrl || process.env.GLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4'
     this.apiKey = config.apiKey || process.env.GLM_API_KEY || process.env.ZHIPU_API_KEY
-    this.model = config.model || process.env.GLM_MODEL || 'glm-5'
+    this.model = config.model || process.env.GLM_MODEL || 'glm-5.1'
+  }
+
+  /**
+   * 检测消息中是否包含图片
+   */
+  private hasImageInMessages(messages: UnifiedMessage[]): boolean {
+    for (const msg of messages) {
+      if (typeof msg.content !== 'string' && Array.isArray(msg.content)) {
+        if (msg.content.some(c => c.type === 'image')) {
+          return true
+        }
+      }
+    }
+    return false
+  }
+
+  /** GLM 视觉模型列表 */
+  private static readonly VISION_MODELS = new Set([
+    'glm-5v-turbo',
+    'glm-4.6v',
+    'glm-4.6v-flash',
+    'glm-4v',
+    'glm-4v-plus',
+    'glm-4v-flash',
+    'glm-4.1v-thinking-flashx',
+    'glm-4.1v-thinking-flash',
+  ])
+
+  /**
+   * 检查模型是否是视觉模型
+   */
+  private isVisionModel(model: string): boolean {
+    return GLMAdapter.VISION_MODELS.has(model.toLowerCase())
+  }
+
+  /**
+   * 根据消息内容选择最合适的模型
+   * - 有图片时使用 glm-5v-turbo（多模态模型）
+   * - 否则使用配置的默认模型
+   */
+  private selectModel(params: ChatParams): string {
+    const requestedModel = params.model || this.model || 'glm-5.1'
+    
+    // 如果消息中包含图片，自动切换到视觉模型
+    if (this.hasImageInMessages(params.messages)) {
+      // 如果用户已经指定了视觉模型，使用用户指定的
+      if (this.isVisionModel(requestedModel)) {
+        return requestedModel
+      }
+      // 否则自动切换到 glm-5v-turbo
+      return 'glm-5v-turbo'
+    }
+    
+    return requestedModel
   }
 
   /**
@@ -229,23 +283,135 @@ export class GLMAdapter extends BaseAdapter {
 
   /**
    * 将统一工具转换为 GLM 格式
+   * 
+   * GLM API 需要标准的 JSON Schema 格式，包括：
+   * - type: "object"
+   * - properties: 属性定义
+   * - required: 必需字段数组（很重要！）
    */
   private toGLMTools(tools: UnifiedTool[]): GLMTool[] {
-    return tools.map(tool => ({
-      type: 'function' as const,
-      function: {
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.inputSchema,
-      },
-    }))
+    return tools.map(tool => {
+      // 确保 parameters 是有效的 JSON Schema 格式
+      const params = this.cleanSchemaForGLM(tool.inputSchema)
+      
+      return {
+        type: 'function' as const,
+        function: {
+          name: tool.name,
+          description: this.truncateDescription(tool.description, 500),
+          parameters: params,
+        },
+      }
+    })
+  }
+
+  /**
+   * 清理 JSON Schema 使其兼容 GLM API
+   */
+  private cleanSchemaForGLM(schema: Record<string, unknown>): Record<string, unknown> {
+    const result: Record<string, unknown> = {
+      type: 'object',
+    }
+
+    // 获取 properties
+    const properties = schema.properties as Record<string, unknown> | undefined
+    if (properties) {
+      const cleanedProps: Record<string, unknown> = {}
+      for (const [key, value] of Object.entries(properties)) {
+        cleanedProps[key] = this.cleanPropertyForGLM(value as Record<string, unknown>)
+      }
+      result.properties = cleanedProps
+    }
+
+    // 直接使用传入的 required 数组
+    // convertToUnifiedTools 已经通过 zodToJsonSchema 正确转换了 required 字段
+    const required = schema.required as string[] | undefined
+    if (required && required.length > 0) {
+      // 过滤掉以 _ 开头的内部字段（如 _simulatedSedEdit）
+      const filteredRequired = required.filter(key => !key.startsWith('_'))
+      if (filteredRequired.length > 0) {
+        result.required = filteredRequired
+      }
+    }
+
+    // 复制其他有用的字段
+    if (schema.additionalProperties !== undefined) {
+      result.additionalProperties = schema.additionalProperties
+    }
+
+    return result
+  }
+
+  /**
+   * 清理单个属性的 schema
+   */
+  private cleanPropertyForGLM(prop: Record<string, unknown>): Record<string, unknown> {
+    const result: Record<string, unknown> = {}
+    
+    // 复制基本类型信息
+    if (prop.type) result.type = prop.type
+    
+    // 简化描述
+    if (prop.description && typeof prop.description === 'string') {
+      result.description = this.truncateDescription(prop.description, 200)
+    }
+    
+    // 复制其他重要字段
+    if (prop.enum) result.enum = prop.enum
+    if (prop.default !== undefined) result.default = prop.default
+    if (prop.minimum !== undefined) result.minimum = prop.minimum
+    if (prop.maximum !== undefined) result.maximum = prop.maximum
+    
+    // 处理嵌套对象
+    if (prop.properties) {
+      result.properties = {}
+      for (const [key, value] of Object.entries(prop.properties as Record<string, unknown>)) {
+        (result.properties as Record<string, unknown>)[key] = 
+          this.cleanPropertyForGLM(value as Record<string, unknown>)
+      }
+      // 复制嵌套对象的 required 字段
+      if (prop.required && Array.isArray(prop.required)) {
+        result.required = prop.required
+      }
+    }
+    
+    // 处理数组
+    if (prop.items) {
+      result.items = this.cleanPropertyForGLM(prop.items as Record<string, unknown>)
+    }
+    
+    // 复制 anyOf/oneOf（用于联合类型）
+    if (prop.anyOf && Array.isArray(prop.anyOf)) {
+      result.anyOf = (prop.anyOf as Record<string, unknown>[]).map(
+        item => this.cleanPropertyForGLM(item)
+      )
+    }
+    if (prop.oneOf && Array.isArray(prop.oneOf)) {
+      result.oneOf = (prop.oneOf as Record<string, unknown>[]).map(
+        item => this.cleanPropertyForGLM(item)
+      )
+    }
+    
+    // 移除 GLM 可能不支持的字段
+    // format 字段在某些模型上可能有问题
+    // 不复制 format 字段
+
+    return result
+  }
+
+  /**
+   * 截断描述文本
+   */
+  private truncateDescription(desc: string, maxLen: number): string {
+    if (desc.length <= maxLen) return desc
+    return desc.slice(0, maxLen - 3) + '...'
   }
 
   /**
    * 流式 Chat 请求
    */
   async *chat(params: ChatParams): AsyncGenerator<StreamEvent, void, unknown> {
-    const model = params.model || this.model || 'glm-5'
+    const model = this.selectModel(params)
     const url = `${this.baseUrl}/chat/completions`
 
     const body: Record<string, unknown> = {
@@ -323,14 +489,15 @@ export class GLMAdapter extends BaseAdapter {
                 yield { type: 'content_block_stop', index: contentIndex }
               }
               for (const [idx, tc] of toolCalls) {
+                const parsedInput = this.parseToolCallArguments(tc.arguments, tc.name, 'GLM')
                 yield {
                   type: 'content_block_start',
                   index: idx + 1,
                   contentBlock: {
                     type: 'tool_use',
-                    id: tc.id,
-                    name: tc.name,
-                    input: JSON.parse(tc.arguments || '{}'),
+                    id: tc.id || `tool_call_${idx}`,
+                    name: tc.name || 'unknown_tool',
+                    input: parsedInput,
                   },
                 }
                 yield { type: 'content_block_stop', index: idx + 1 }
@@ -402,7 +569,7 @@ export class GLMAdapter extends BaseAdapter {
    * 非流式 Chat 请求
    */
   async chatSync(params: ChatParams): Promise<ChatResponse> {
-    const model = params.model || this.model || 'glm-5'
+    const model = this.selectModel(params)
     const url = `${this.baseUrl}/chat/completions`
 
     const body: Record<string, unknown> = {
@@ -467,11 +634,16 @@ export class GLMAdapter extends BaseAdapter {
 
       if (message.tool_calls) {
         for (const toolCall of message.tool_calls) {
+          const parsedInput = this.parseToolCallArguments(
+            toolCall.function.arguments,
+            toolCall.function.name,
+            'GLM'
+          )
           content.push({
             type: 'tool_use',
-            id: toolCall.id,
-            name: toolCall.function.name,
-            input: JSON.parse(toolCall.function.arguments || '{}'),
+            id: toolCall.id || `tool_call_${toolCall.function.name}`,
+            name: toolCall.function.name || 'unknown_tool',
+            input: parsedInput,
           })
         }
       }
@@ -536,25 +708,36 @@ export class GLMAdapter extends BaseAdapter {
    * 获取可用模型列表
    */
   async listModels(): Promise<string[]> {
-    // 智谱 GLM 已知模型列表
+    // 智谱 GLM 已知模型列表（2026年4月更新）
     return [
-      // GLM-5 系列 (最新旗舰)
-      'glm-5',           // 旗舰模型，200K 上下文，Agentic Coding
-      'glm-5-turbo',     // 快速版本
+      // GLM-5.x 系列 (最新旗舰)
+      'glm-5.1',         // 最新旗舰，Coding 对齐 Claude Opus 4.6，长程任务显著提升
+      'glm-5',           // 高智能基座，200K 上下文，Agentic Coding
+      'glm-5-turbo',     // 龙虾增强基座，复杂长任务执行连续性好
       // GLM-4.x 系列
-      'glm-4.7',
-      'glm-4.6',
-      'glm-4.5',
+      'glm-4.7',         // 高智能模型，通用对话、推理与智能体能力全面升级
+      'glm-4.7-flashx',  // 轻量高速，适用于中文写作、翻译、长文本等
+      'glm-4.7-flash',   // 免费模型，最新基座的普惠版本
+      'glm-4.6',         // 超强性能，200K上下文，高级编码能力
+      'glm-4.5-air',     // 高性价比，推理、编码和智能体任务表现强劲
+      'glm-4.5-airx',    // 高性价比极速版
+      'glm-4.5-flash',   // 免费模型，支持深度思考模式
       // GLM-4 系列
       'glm-4',
       'glm-4-plus',
       'glm-4-air',
       'glm-4-airx',
       'glm-4-flash',
-      'glm-4-long',
-      // 视觉模型
+      'glm-4-flash-250414',
+      'glm-4-flashx-250414',
+      'glm-4-long',      // 超长输入，支持 1M 上下文
+      // 视觉模型 (多模态)
+      'glm-5v-turbo',    // 多模态 Coding 基座，兼顾视觉与 Coding 能力，200K 上下文
+      'glm-4.6v',        // 视觉推理，原生支持工具调用
+      'glm-4.6v-flash',  // 免费视觉模型
       'glm-4v',
       'glm-4v-plus',
+      'glm-4v-flash',
       // 代码模型
       'codegeex-4',
       // 嵌入模型
