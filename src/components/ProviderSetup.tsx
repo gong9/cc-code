@@ -10,6 +10,7 @@ import {
   setProviderConfig,
   readProvidersConfig,
   PROVIDER_OPTIONS,
+  isXmapiBaseUrl,
 } from '../services/api/providers/providerConfig.js'
 import {
   getCategoryOptions,
@@ -34,6 +35,7 @@ interface Props {
 
 // 各 Provider 的 API Key 获取地址
 const API_KEY_URLS: Record<string, string> = {
+  xmapi: 'https://docs.xmapi.cc/guide/cli-claude-code',
   minimax: 'https://platform.minimax.chat/user-center/basic-information/interface-key',
   glm: 'https://open.bigmodel.cn/usercenter/apikeys',
   qwen: 'https://bailian.console.aliyun.com/',
@@ -245,7 +247,14 @@ export function ProviderSetup({ onDone }: Props): React.ReactNode {
  */
 export function needsProviderSetup(): boolean {
   // 如果环境变量中有任意 API Key，不需要配置
-  if (process.env.MINIMAX_API_KEY || process.env.GLM_API_KEY || process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY || process.env.OPENAI_API_KEY) {
+  if (
+    (process.env.ANTHROPIC_AUTH_TOKEN && isXmapiBaseUrl(process.env.ANTHROPIC_BASE_URL)) ||
+    process.env.MINIMAX_API_KEY ||
+    process.env.GLM_API_KEY ||
+    process.env.QWEN_API_KEY ||
+    process.env.DASHSCOPE_API_KEY ||
+    process.env.OPENAI_API_KEY
+  ) {
     return false
   }
 

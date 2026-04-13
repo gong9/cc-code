@@ -19,9 +19,16 @@ export interface ProvidersConfig {
   providers: Record<string, ProviderSettings>
 }
 
+export const XMAPI_BASE_URL = 'https://www.xmapi.cc'
+
 const DEFAULT_CONFIG: ProvidersConfig = {
   defaultProvider: 'minimax',
   providers: {
+    xmapi: {
+      provider: 'xmapi',
+      model: 'gpt-5.4',
+      baseUrl: XMAPI_BASE_URL,
+    },
     minimax: {
       provider: 'minimax',
       model: 'MiniMax-M2.7',
@@ -47,6 +54,7 @@ const DEFAULT_CONFIG: ProvidersConfig = {
 }
 
 export const PROVIDER_OPTIONS = [
+  { value: 'xmapi', label: 'Xmapi (Claude 兼容)', description: '固定接入 xmapi Anthropic 兼容网关' },
   { value: 'minimax', label: 'MiniMax (推荐)', description: 'MiniMax M2.7 大模型' },
   { value: 'qwen', label: '阿里千问 (Qwen)', description: 'Qwen3.6-Plus 百万上下文' },
   { value: 'glm', label: '智谱 GLM', description: 'GLM-5 旗舰 Agentic 模型' },
@@ -61,6 +69,35 @@ function getConfigPath(): string {
   return join(getConfigDir(), 'providers.json')
 }
 
+export function isXmapiBaseUrl(baseUrl?: string): boolean {
+  if (!baseUrl) {
+    return false
+  }
+
+  try {
+    return new URL(baseUrl).hostname.toLowerCase() === 'www.xmapi.cc'
+  } catch {
+    return false
+  }
+}
+
+function clearProviderEnvForSwitch(): void {
+  delete process.env.ANTHROPIC_AUTH_TOKEN
+  delete process.env.ANTHROPIC_API_KEY
+  delete process.env.ANTHROPIC_BASE_URL
+  delete process.env.ANTHROPIC_MODEL
+  delete process.env.MINIMAX_API_KEY
+  delete process.env.MINIMAX_MODEL
+  delete process.env.GLM_API_KEY
+  delete process.env.GLM_MODEL
+  delete process.env.QWEN_API_KEY
+  delete process.env.QWEN_MODEL
+  delete process.env.DASHSCOPE_API_KEY
+  delete process.env.OPENAI_API_KEY
+  delete process.env.OPENAI_MODEL
+  delete process.env.OPENAI_BASE_URL
+}
+
 /**
  * 读取配置文件
  */
@@ -71,13 +108,24 @@ export function readProvidersConfig(): ProvidersConfig {
     if (existsSync(configPath)) {
       const content = readFileSync(configPath, 'utf-8')
       const parsed = JSON.parse(content) as Partial<ProvidersConfig>
+      const parsedProviders = parsed.providers ?? {}
+      const mergedProviders = Object.fromEntries(
+        Object.entries({
+          ...DEFAULT_CONFIG.providers,
+          ...parsedProviders,
+        }).map(([providerName, providerConfig]) => [
+          providerName,
+          {
+            ...DEFAULT_CONFIG.providers[providerName],
+            ...providerConfig,
+          },
+        ]),
+      ) as ProvidersConfig['providers']
+
       return {
         ...DEFAULT_CONFIG,
         ...parsed,
-        providers: {
-          ...DEFAULT_CONFIG.providers,
-          ...parsed.providers,
-        },
+        providers: mergedProviders,
       }
     }
   } catch {
@@ -110,7 +158,14 @@ export function saveProvidersConfig(config: ProvidersConfig): void {
  */
 export function hasValidApiKey(): boolean {
   // 首先检查环境变量
-  if (process.env.MINIMAX_API_KEY || process.env.GLM_API_KEY || process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY || process.env.OPENAI_API_KEY) {
+  if (
+    (process.env.ANTHROPIC_AUTH_TOKEN && isXmapiBaseUrl(process.env.ANTHROPIC_BASE_URL)) ||
+    process.env.MINIMAX_API_KEY ||
+    process.env.GLM_API_KEY ||
+    process.env.QWEN_API_KEY ||
+    process.env.DASHSCOPE_API_KEY ||
+    process.env.OPENAI_API_KEY
+  ) {
     return true
   }
   
@@ -130,6 +185,7 @@ export function getActiveProviderConfig(): ProviderSettings | null {
 
 // Provider 默认模型
 const DEFAULT_MODELS: Record<string, string> = {
+  xmapi: 'gpt-5.4',
   minimax: 'MiniMax-M2.7',
   qwen: 'qwen3.6-plus',
   glm: 'glm-5',
@@ -179,21 +235,33 @@ export function applyProviderToEnv(
   const provider = providerName ?? config.defaultProvider
   const providerConfig = config.providers[provider]
   
-  // 设置 MODEL_PROVIDER（aihubmix 映射到 openai-compat）
-  process.env.MODEL_PROVIDER = provider === 'aihubmix' ? 'openai-compat' : provider
+  // 设置 MODEL_PROVIDER（aihubmix 映射到 openai-compat，xmapi 复用 anthropic）
+  process.env.MODEL_PROVIDER =
+    provider === 'aihubmix'
+      ? 'openai-compat'
+      : provider === 'xmapi'
+        ? 'anthropic'
+        : provider
   
   // 保存原始 provider 名称（用于 UI 显示）
   process.env.GONG_ORIGINAL_PROVIDER = provider
   
-  // AIHubMix 需要设置 base URL
+  clearProviderEnvForSwitch()
+
+  // 需要设置 base URL 的 provider
   if (provider === 'aihubmix') {
     process.env.OPENAI_BASE_URL = providerConfig?.baseUrl || 'https://aihubmix.com/v1'
+  } else if (provider === 'xmapi') {
+    process.env.ANTHROPIC_BASE_URL = providerConfig?.baseUrl || XMAPI_BASE_URL
   }
   
   // 设置 API Key
   const key = apiKey ?? providerConfig?.apiKey
   if (key) {
     switch (provider) {
+      case 'xmapi':
+        process.env.ANTHROPIC_AUTH_TOKEN = key
+        break
       case 'minimax':
         process.env.MINIMAX_API_KEY = key
         process.env.ANTHROPIC_API_KEY = key  // MiniMax 使用 Anthropic SDK 兼容协议
@@ -220,6 +288,9 @@ export function applyProviderToEnv(
   const modelName = model ?? providerConfig?.model
   if (modelName) {
     switch (provider) {
+      case 'xmapi':
+        process.env.ANTHROPIC_MODEL = modelName
+        break
       case 'minimax':
         process.env.MINIMAX_MODEL = modelName
         break
@@ -256,6 +327,11 @@ export function initializeProviderConfig(): boolean {
   if (process.env.MINIMAX_API_KEY) {
     process.env.MODEL_PROVIDER = 'minimax'
     process.env.ANTHROPIC_BASE_URL = 'https://api.minimaxi.com/anthropic'
+    return true
+  }
+  if (process.env.ANTHROPIC_AUTH_TOKEN && isXmapiBaseUrl(process.env.ANTHROPIC_BASE_URL)) {
+    process.env.MODEL_PROVIDER = 'anthropic'
+    process.env.GONG_ORIGINAL_PROVIDER = 'xmapi'
     return true
   }
   if (process.env.GLM_API_KEY) {
@@ -297,4 +373,5 @@ export function clearAllApiKeys(): void {
   delete process.env.DASHSCOPE_API_KEY
   delete process.env.OPENAI_API_KEY
   delete process.env.ANTHROPIC_API_KEY
+  delete process.env.ANTHROPIC_AUTH_TOKEN
 }

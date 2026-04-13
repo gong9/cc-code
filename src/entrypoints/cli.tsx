@@ -9,6 +9,36 @@ import { homedir } from 'os';
 import { join } from 'path';
 
 // eslint-disable-next-line custom-rules/no-top-level-side-effects
+function clearBootstrapProviderEnv(): void {
+    delete process.env.ANTHROPIC_AUTH_TOKEN;
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_BASE_URL;
+    delete process.env.ANTHROPIC_MODEL;
+    delete process.env.MINIMAX_API_KEY;
+    delete process.env.MINIMAX_MODEL;
+    delete process.env.GLM_API_KEY;
+    delete process.env.GLM_MODEL;
+    delete process.env.QWEN_API_KEY;
+    delete process.env.QWEN_MODEL;
+    delete process.env.DASHSCOPE_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_MODEL;
+    delete process.env.OPENAI_BASE_URL;
+}
+
+function isXmapiBaseUrl(baseUrl: string | undefined): boolean {
+    if (!baseUrl) {
+        return false;
+    }
+
+    try {
+        return new URL(baseUrl).hostname.toLowerCase() === 'www.xmapi.cc';
+    } catch {
+        return false;
+    }
+}
+
+// eslint-disable-next-line custom-rules/no-top-level-side-effects
 function loadProviderConfig(): void {
     const configDir = process.env.GONG_CONFIG_DIR ?? process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.gong');
     const configPath = join(configDir, 'providers.json');
@@ -19,21 +49,26 @@ function loadProviderConfig(): void {
             const config = JSON.parse(content);
             const defaultProvider = config.defaultProvider || 'minimax';
             const providerConfig = config.providers?.[defaultProvider];
-            
-            // 保存原始 provider 名称（用于 UI 显示）
-            process.env.GONG_ORIGINAL_PROVIDER = defaultProvider;
-            
-            // Set provider（aihubmix 映射到 openai-compat）
-            if (!process.env.MODEL_PROVIDER) {
-                process.env.MODEL_PROVIDER = defaultProvider === 'aihubmix' ? 'openai-compat' : defaultProvider;
-            }
-            
-            // Set API key from config if not in env
-            if (providerConfig?.apiKey) {
+
+            // Prefer persisted config only when it contains a usable key and
+            // the current process did not explicitly choose a provider.
+            if (providerConfig?.apiKey && !process.env.MODEL_PROVIDER) {
+                clearBootstrapProviderEnv();
+                process.env.GONG_ORIGINAL_PROVIDER = defaultProvider;
+                process.env.MODEL_PROVIDER =
+                    defaultProvider === 'aihubmix'
+                        ? 'openai-compat'
+                        : defaultProvider === 'xmapi'
+                            ? 'anthropic'
+                            : defaultProvider;
+
                 const provider = defaultProvider;
-                if (provider === 'minimax' && !process.env.MINIMAX_API_KEY) {
+                if (provider === 'minimax') {
                     process.env.MINIMAX_API_KEY = providerConfig.apiKey;
                     process.env.ANTHROPIC_API_KEY = providerConfig.apiKey; // MiniMax 使用 Anthropic SDK
+                } else if (provider === 'xmapi') {
+                    process.env.ANTHROPIC_AUTH_TOKEN = providerConfig.apiKey;
+                    process.env.ANTHROPIC_BASE_URL = providerConfig.baseUrl || 'https://www.xmapi.cc';
                 } else if (provider === 'glm' && !process.env.GLM_API_KEY) {
                     process.env.GLM_API_KEY = providerConfig.apiKey;
                 } else if (provider === 'qwen' && !process.env.QWEN_API_KEY) {
@@ -46,19 +81,19 @@ function loadProviderConfig(): void {
                     process.env.OPENAI_API_KEY = providerConfig.apiKey;
                     process.env.OPENAI_BASE_URL = providerConfig.baseUrl || 'https://aihubmix.com/v1';
                 }
-            }
-            
-            // Set model from config
-            if (providerConfig?.model) {
-                const provider = defaultProvider;
-                if (provider === 'minimax' && !process.env.MINIMAX_MODEL) {
-                    process.env.MINIMAX_MODEL = providerConfig.model;
-                } else if (provider === 'glm' && !process.env.GLM_MODEL) {
-                    process.env.GLM_MODEL = providerConfig.model;
-                } else if (provider === 'qwen' && !process.env.QWEN_MODEL) {
-                    process.env.QWEN_MODEL = providerConfig.model;
-                } else if ((provider === 'openai' || provider === 'aihubmix') && !process.env.OPENAI_MODEL) {
-                    process.env.OPENAI_MODEL = providerConfig.model;
+
+                if (providerConfig.model) {
+                    if (provider === 'minimax') {
+                        process.env.MINIMAX_MODEL = providerConfig.model;
+                    } else if (provider === 'xmapi') {
+                        process.env.ANTHROPIC_MODEL = providerConfig.model;
+                    } else if (provider === 'glm') {
+                        process.env.GLM_MODEL = providerConfig.model;
+                    } else if (provider === 'qwen') {
+                        process.env.QWEN_MODEL = providerConfig.model;
+                    } else if (provider === 'openai' || provider === 'aihubmix') {
+                        process.env.OPENAI_MODEL = providerConfig.model;
+                    }
                 }
             }
         }
@@ -68,7 +103,21 @@ function loadProviderConfig(): void {
     
     // Set default provider if not set
     if (!process.env.MODEL_PROVIDER) {
-        process.env.MODEL_PROVIDER = 'minimax';
+        if (process.env.MINIMAX_API_KEY) {
+            process.env.MODEL_PROVIDER = 'minimax';
+        } else if (process.env.ANTHROPIC_AUTH_TOKEN && isXmapiBaseUrl(process.env.ANTHROPIC_BASE_URL)) {
+            process.env.MODEL_PROVIDER = 'anthropic';
+            process.env.GONG_ORIGINAL_PROVIDER = 'xmapi';
+            process.env.ANTHROPIC_MODEL ??= 'gpt-5.4';
+        } else if (process.env.GLM_API_KEY) {
+            process.env.MODEL_PROVIDER = 'glm';
+        } else if (process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY) {
+            process.env.MODEL_PROVIDER = 'qwen';
+        } else if (process.env.OPENAI_API_KEY) {
+            process.env.MODEL_PROVIDER = 'openai-compat';
+        } else {
+            process.env.MODEL_PROVIDER = 'minimax';
+        }
     }
 }
 

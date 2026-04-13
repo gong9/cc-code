@@ -2,6 +2,19 @@
 
 本文档记录项目的主要版本变更。
 
+## [0.1.15] - 2026-04-13
+
+### 新增
++ 🔌 新增固定 `xmapi` Provider，首次启动可直接选择并录入 API Key
++ 🤖 `xmapi` 默认模型改为 `gpt-5.4`，无需手动输入 base URL
++ 🧪 新增 `xmapi` Provider 配置与环境变量切换回归测试
+
+### 修复
++ 🐛 修复 `xmapi` 配置重启后加载不完整的问题，确保从 `providers.json` 正确恢复模型与网关地址
++ 🐛 修复 Provider 切换时 `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_API_KEY` 可能残留导致的串线问题
++ 🐛 修复纯环境变量启动 `xmapi` 时可能误回退到 MiniMax 的问题
++ 🐛 修复 `providers.json` 中仅保存 `xmapi` API Key 时默认模型与 base URL 丢失的问题
+
 ## [0.1.14] - 2026-04-12
 
 ### 新增

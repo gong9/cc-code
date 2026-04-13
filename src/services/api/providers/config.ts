@@ -96,7 +96,7 @@ export function getProviderConfigFromEnv(): ProviderConfig {
     default:
       return {
         provider: 'anthropic',
-        apiKey: process.env.ANTHROPIC_API_KEY,
+        apiKey: process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN,
         baseUrl: process.env.ANTHROPIC_BASE_URL,
         model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514',
         timeout: parseInt(process.env.API_TIMEOUT_MS || '600000', 10),
